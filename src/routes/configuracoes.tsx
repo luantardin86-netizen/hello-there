@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { CircleCheck, Lock, TriangleAlert } from 'lucide-react'
+import { CircleCheck, Database, LoaderCircle, Lock, TriangleAlert } from 'lucide-react'
 import { catalog, categoryLabel, company, demoRules, funnelStages, leadSources, officialRules, paymentMethods, pendingSettings, regions } from '../data/settings'
 import { brl, num } from '../lib/format'
-import { Badge, Card, CardHeader, PageHeader } from '../components/ui'
+import { Badge, Button, Card, CardHeader, PageHeader } from '../components/ui'
+import { isSupabaseConfigured } from '../lib/supabase/client'
+import { testSupabaseConnection } from '../lib/supabase/connection'
 
 export const Route = createFileRoute('/configuracoes')({
   head: () => ({ meta: [{ title: 'Configurações — Qualimix CRM' }] }),
@@ -20,6 +23,18 @@ const permissions: [string, string[]][] = [
 ]
 
 function Configuracoes() {
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle')
+  const [connectionMessage, setConnectionMessage] = useState('')
+  const apiConfigured = isSupabaseConfigured()
+
+  const handleConnectionTest = async () => {
+    setConnectionStatus('checking')
+    setConnectionMessage('')
+    const result = await testSupabaseConnection()
+    setConnectionStatus(result.ok ? 'connected' : 'error')
+    setConnectionMessage(result.message)
+  }
+
   const pend = pendingSettings()
   const ruleRows: [string, number | null, number | null, ((n: number) => string)?][] = [
     ['Frete — valor fixo', officialRules.freight.fixed, demoRules.freight.fixed],
@@ -40,6 +55,55 @@ function Configuracoes() {
   return (
     <>
       <PageHeader eyebrow="Administração" title="Configurações" description="O que precisa ser confirmado com a Qualimix antes de emitir propostas com valores oficiais. Nenhum preço, dado institucional ou capacidade foi presumido." />
+
+      <Card className="mb-6">
+        <CardHeader
+          title="Conexão com Supabase"
+          subtitle="Cliente centralizado usando a Data API, sem conexão PostgreSQL direta no navegador."
+          action={
+            <Badge tone={connectionStatus === 'connected' ? 'ok' : apiConfigured ? 'info' : 'warn'}>
+              {connectionStatus === 'connected'
+                ? 'API acessível'
+                : connectionStatus === 'checking'
+                  ? 'Testando'
+                  : connectionStatus === 'error'
+                    ? 'Falha no teste'
+                    : apiConfigured
+                      ? 'Variáveis encontradas'
+                      : 'Configuração ausente'}
+            </Badge>
+          }
+        />
+        <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-3xl space-y-2 text-sm text-muted">
+            <p>
+              A aplicação usa <strong>VITE_SUPABASE_URL</strong> e <strong>VITE_SUPABASE_PUBLISHABLE_KEY</strong>.
+              O cliente fica em um único módulo para ser reutilizado pelos serviços do sistema.
+            </p>
+            <p>
+              O teste consulta a descrição da API e não exige tabelas. Ele não cria, altera ou apaga dados.
+              Antes de armazenar dados reais, ainda será necessário configurar autenticação, permissões e políticas RLS.
+            </p>
+            {connectionMessage && (
+              <p role="status" aria-live="polite" className={connectionStatus === 'connected' ? 'font-medium text-ok' : 'font-medium text-brand'}>
+                {connectionMessage}
+              </p>
+            )}
+          </div>
+          <Button
+            variant="primary"
+            onClick={() => void handleConnectionTest()}
+            disabled={!apiConfigured || connectionStatus === 'checking'}
+          >
+            {connectionStatus === 'checking' ? (
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+            ) : (
+              <Database className="h-4 w-4" />
+            )}
+            {connectionStatus === 'checking' ? 'Testando...' : 'Testar conexão'}
+          </Button>
+        </div>
+      </Card>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_1fr]">
         <Card>
