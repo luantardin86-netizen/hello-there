@@ -51,14 +51,6 @@ async function handleWebsiteLeadRequest(request: Request): Promise<Response | nu
   }
 
   const origin = request.headers.get("origin");
-  if (origin && !WEBSITE_ORIGINS.has(origin)) {
-    console.warn("[LEAD WEBHOOK] Origem bloqueada:", origin);
-    return leadWebhookResponse(
-      { ok: false, message: "Origem não autorizada para este teste." },
-      403,
-      null,
-    );
-  }
 
   if (pathname === WEBSITE_LEAD_PENDING_PATH) {
     if (request.method !== "GET") {
@@ -77,6 +69,15 @@ async function handleWebsiteLeadRequest(request: Request): Promise<Response | nu
         "cache-control": "no-store",
       },
     });
+  }
+
+  if (origin && !WEBSITE_ORIGINS.has(origin)) {
+    console.warn("[LEAD WEBHOOK] Origem bloqueada:", origin);
+    return leadWebhookResponse(
+      { ok: false, message: "Origem não autorizada para este teste." },
+      403,
+      null,
+    );
   }
 
   if (request.method === "OPTIONS") {
@@ -133,7 +134,7 @@ async function handleWebsiteLeadRequest(request: Request): Promise<Response | nu
       typeof data.numero_cliente === "string" || typeof data.numero_cliente === "number"
         ? String(data.numero_cliente).trim()
         : "";
-    const numeroCliente = telefoneRecebido.replace(/\\D/g, "");
+    const numeroCliente = telefoneRecebido.replace(/\D/g, "");
 
     if (!nomeCliente || nomeCliente.length > 120 || numeroCliente.length < 10 || numeroCliente.length > 15) {
       console.warn("[LEAD WEBHOOK] Payload inválido:", {
@@ -176,7 +177,7 @@ async function handleWebsiteLeadRequest(request: Request): Promise<Response | nu
         ok: true,
         message: "Lead recebido pelo CRM e aguardando sincronização com o funil.",
         event_id: event.id,
-        etapa: "novo",
+        etapa: "1. Novo lead",
       },
       202,
       origin,
