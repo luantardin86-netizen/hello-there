@@ -160,7 +160,7 @@ export function MeasureCalculator({
       <div className="mt-4 grid min-w-0 gap-3 rounded-md border border-line p-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:p-4">
         <div>
           <label className="mb-1 block text-xs font-semibold text-muted">Margem de segurança (%)</label>
-          <input inputMode="decimal" className={inputCls(!!summary.marginError)} value={margin} placeholder="Opcional" onChange={(e) => onMargin(e.target.value)} />
+          <input inputMode="decimal" className={cx(inputCls(!!summary.marginError), 'text-base sm:text-[15px]')} value={margin} placeholder="Opcional" onChange={(e) => onMargin(e.target.value)} />
           {summary.marginError && <p className="mt-1 text-xs font-semibold text-brand">{summary.marginError}</p>}
         </div>
         <dl className="grid min-w-0 grid-cols-2 gap-2 text-center min-[420px]:grid-cols-3">
