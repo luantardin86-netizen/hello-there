@@ -15,6 +15,7 @@ import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as FunilRouteImport } from './routes/funil'
 import { Route as OrcamentosIndexRouteImport } from './routes/orcamentos.index'
 import { Route as OrcamentosNovoRouteImport } from './routes/orcamentos.novo'
+import { Route as CaminhoesRouteImport } from './routes/caminhoes'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -46,6 +47,11 @@ const OrcamentosNovoRoute = OrcamentosNovoRouteImport.update({
   path: '/orcamentos/novo',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CaminhoesRoute = CaminhoesRouteImport.update({
+  id: '/caminhoes',
+  path: '/caminhoes',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -54,6 +60,7 @@ export interface FileRoutesByFullPath {
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos/': typeof OrcamentosIndexRoute
+  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -62,6 +69,7 @@ export interface FileRoutesByTo {
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos': typeof OrcamentosIndexRoute
+  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -71,6 +79,7 @@ export interface FileRoutesById {
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos/': typeof OrcamentosIndexRoute
+  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -81,6 +90,7 @@ export interface FileRouteTypes {
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos/'
+    | '/caminhoes'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -89,6 +99,7 @@ export interface FileRouteTypes {
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos'
+    | '/caminhoes'
   id:
     | '__root__'
     | '/'
@@ -97,6 +108,7 @@ export interface FileRouteTypes {
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos/'
+    | '/caminhoes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -106,6 +118,7 @@ export interface RootRouteChildren {
   FunilRoute: typeof FunilRoute
   OrcamentosNovoRoute: typeof OrcamentosNovoRoute
   OrcamentosIndexRoute: typeof OrcamentosIndexRoute
+  CaminhoesRoute: typeof CaminhoesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrcamentosNovoRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/caminhoes': {
+      id: '/caminhoes'
+      path: '/caminhoes'
+      fullPath: '/caminhoes'
+      preLoaderRoute: typeof CaminhoesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -162,6 +182,7 @@ const rootRouteChildren: RootRouteChildren = {
   FunilRoute: FunilRoute,
   OrcamentosNovoRoute: OrcamentosNovoRoute,
   OrcamentosIndexRoute: OrcamentosIndexRoute,
+  CaminhoesRoute: CaminhoesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
