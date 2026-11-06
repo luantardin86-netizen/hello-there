@@ -64,7 +64,7 @@ export function MeasureCalculator({
   }
 
   return (
-    <div>
+    <div className="min-w-0 w-full">
       <div className="space-y-3">
         {elements.map((e, i) => {
           const r = results[i]
@@ -75,17 +75,17 @@ export function MeasureCalculator({
           const isSlab = kind === 'volume' && e.elementType === 'Laje'
           const slabValue = e.slabType || (e.thicknessCm ? `H${e.thicknessCm}` : 'H8')
           return (
-            <div key={e.id} className={cx('rounded-md border p-3', r.error ? 'border-brand/60 bg-brand-soft/40' : 'border-line bg-surface-2')}>
-              <div className="flex flex-wrap items-end gap-2">
-                <div className="w-full sm:w-36">
+            <div key={e.id} className={cx('min-w-0 rounded-md border p-2.5 sm:p-3', r.error ? 'border-brand/60 bg-brand-soft/40' : 'border-line bg-surface-2')}>
+              <div className="grid min-w-0 grid-cols-2 items-end gap-x-2 gap-y-3 sm:flex sm:flex-wrap sm:gap-2">
+                <div className="min-w-0 sm:w-36">
                   <label className="mb-1 block text-xs font-semibold text-muted">Elemento {i + 1}</label>
-                  <select aria-label={`Tipo do elemento ${i + 1}`} className={inputCls()} value={e.elementType} onChange={(ev) => changeType(e.id, ev.target.value)}>
+                  <select aria-label={`Tipo do elemento ${i + 1}`} className={cx(inputCls(), 'text-base sm:text-[15px]')} value={e.elementType} onChange={(ev) => changeType(e.id, ev.target.value)}>
                     {elementTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
-                <div className="w-full sm:w-auto">
+                <div className="min-w-0 sm:w-auto">
                   <label className="mb-1 block text-xs font-semibold text-muted">Entrada</label>
-                  <select aria-label={`Forma de entrada do elemento ${i + 1}`} className={inputCls()} value={e.mode} onChange={(ev) => patch(e.id, { mode: ev.target.value as MeasureElement['mode'] })}>
+                  <select aria-label={`Forma de entrada do elemento ${i + 1}`} className={cx(inputCls(), 'text-base sm:text-[15px]')} value={e.mode} onChange={(ev) => patch(e.id, { mode: ev.target.value as MeasureElement['mode'] })}>
                     <option value="dimensoes">Dimensões</option>
                     <option value="informado">{kind === 'volume' ? 'Volume informado' : 'Área informada'}</option>
                   </select>
@@ -93,11 +93,11 @@ export function MeasureCalculator({
                 {e.mode === 'dimensoes' ? (
                   <>
                     {isSlab && (
-                      <div className="w-[calc(50%-4px)] sm:w-28">
+                      <div className="min-w-0 sm:w-28">
                         <label className="mb-1 block text-xs font-semibold text-muted">Modelo da laje</label>
                         <select
                           aria-label={`Modelo da laje do elemento ${i + 1}`}
-                          className={inputCls()}
+                          className={cx(inputCls(), 'text-base sm:text-[15px]')}
                           value={slabValue}
                           onChange={(ev) => patch(e.id, { slabType: ev.target.value, thicknessCm: ev.target.value.slice(1) })}
                         >
@@ -106,9 +106,9 @@ export function MeasureCalculator({
                       </div>
                     )}
                     {isStair ? (
-                      <div className="w-[calc(50%-4px)] sm:w-36">
+                      <div className="min-w-0 sm:w-36">
                         <label className="mb-1 block text-xs font-semibold text-muted">Estimativa fixa (m³)</label>
-                        <select aria-label="Estimativa fixa da escada" className={inputCls()} value={e.stairVolume || '1.5'} onChange={(ev) => patch(e.id, { stairVolume: ev.target.value })}>
+                        <select aria-label="Estimativa fixa da escada" className={cx(inputCls(), 'text-base sm:text-[15px]')} value={e.stairVolume || '1.5'} onChange={(ev) => patch(e.id, { stairVolume: ev.target.value })}>
                           <option value="1.5">1,5 m³</option>
                           <option value="2">2 m³</option>
                           <option value="3">3 m³</option>
@@ -135,10 +135,10 @@ export function MeasureCalculator({
                 ) : (
                   <NumIn label={`${kind === 'volume' ? 'Volume' : 'Área'} (${unit})`} value={e.informed} onChange={(v) => patch(e.id, { informed: v })} />
                 )}
-                <div className="ml-auto flex items-end gap-2">
+                <div className="col-span-2 flex min-w-0 items-end justify-between gap-3 sm:ml-auto sm:col-span-1 sm:justify-end">
                   <div className="text-right">
                     <div className="text-xs font-semibold text-muted">Resultado</div>
-                    <div className="font-display text-xl font-bold tabular">
+                    <div className="whitespace-nowrap font-display text-base font-bold tabular sm:text-xl">
                       {r.value !== null ? `${num(r.value, 3)} ${unit}` : '—'}
                     </div>
                   </div>
@@ -147,26 +147,26 @@ export function MeasureCalculator({
                   </Button>
                 </div>
               </div>
-              <input aria-label={`Observações do elemento ${i + 1}`} placeholder="Observações (opcional): etapa, pavimento, trecho…" className={cx(inputCls(), 'mt-2 h-9 text-sm')} value={e.notes} onChange={(ev) => patch(e.id, { notes: ev.target.value })} />
+              <input aria-label={`Observações do elemento ${i + 1}`} placeholder="Observações (opcional): etapa, pavimento, trecho…" className={cx(inputCls(), 'mt-2 h-10 min-w-0 text-base sm:h-9 sm:text-sm')} value={e.notes} onChange={(ev) => patch(e.id, { notes: ev.target.value })} />
               {r.error && <p role="alert" className="mt-1 text-xs font-semibold text-brand">{r.error}</p>}
             </div>
           )
         })}
       </div>
-      <Button size="sm" className="mt-3" onClick={() => onChange([...elements, blankElement(kind)])}>
+      <Button size="sm" className="mt-3 h-10 w-full sm:h-8 sm:w-auto" onClick={() => onChange([...elements, blankElement(kind)])}>
         <Plus className="h-4 w-4" /> Adicionar elemento ou etapa
       </Button>
 
-      <div className="mt-4 grid gap-3 rounded-md border border-line p-4 sm:grid-cols-[180px_1fr]">
+      <div className="mt-4 grid min-w-0 gap-3 rounded-md border border-line p-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:p-4">
         <div>
           <label className="mb-1 block text-xs font-semibold text-muted">Margem de segurança (%)</label>
-          <input inputMode="decimal" className={inputCls(!!summary.marginError)} value={margin} placeholder="Opcional" onChange={(e) => onMargin(e.target.value)} />
+          <input inputMode="decimal" className={cx(inputCls(!!summary.marginError), 'text-base sm:text-[15px]')} value={margin} placeholder="Opcional" onChange={(e) => onMargin(e.target.value)} />
           {summary.marginError && <p className="mt-1 text-xs font-semibold text-brand">{summary.marginError}</p>}
         </div>
-        <dl className="grid grid-cols-3 gap-2 text-center">
+        <dl className="grid min-w-0 grid-cols-2 gap-2 text-center min-[420px]:grid-cols-3">
           <Stat label={kind === 'volume' ? 'Volume calculado' : 'Área calculada'} value={`${num(summary.base, 3)} ${unit}`} />
           <Stat label={`Margem (${num(summary.marginPct, 1)}%)`} value={`${num(summary.marginValue, 3)} ${unit}`} />
-          <Stat strong label="Estimado p/ orçamento" value={`${num(summary.estimated, 3)} ${unit}`} />
+          <Stat strong className="col-span-2 min-[420px]:col-span-1" label="Estimado p/ orçamento" value={`${num(summary.estimated, 3)} ${unit}`} />
         </dl>
       </div>
       <p className="mt-2 text-xs text-muted">
@@ -179,10 +179,10 @@ export function MeasureCalculator({
   )
 }
 
-function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
+function Stat({ label, value, strong, className }: { label: string; value: string; strong?: boolean; className?: string }) {
   return (
-    <div className={cx('rounded px-2 py-2', strong ? 'bg-ink text-bg' : 'bg-surface-2')}>
-      <dt className={cx('text-[11px] font-semibold uppercase tracking-wide', strong ? 'text-bg/70' : 'text-muted')}>{label}</dt>
+    <div className={cx('min-w-0 rounded px-2 py-2', strong ? 'bg-ink text-bg' : 'bg-surface-2', className)}>
+      <dt className={cx('text-[10px] font-semibold uppercase leading-tight tracking-wide sm:text-[11px]', strong ? 'text-bg/70' : 'text-muted')}>{label}</dt>
       <dd className="font-display text-lg font-bold tabular sm:text-xl">{value}</dd>
     </div>
   )
@@ -190,9 +190,9 @@ function Stat({ label, value, strong }: { label: string; value: string; strong?:
 
 function NumIn({ label, value, onChange, narrow }: { label: string; value: string; onChange: (v: string) => void; narrow?: boolean }) {
   return (
-    <div className={narrow ? 'w-[calc(50%-4px)] sm:w-20' : 'w-[calc(50%-4px)] sm:w-28'}>
-      <label className="mb-1 block text-xs font-semibold text-muted">{label}</label>
-      <input inputMode="decimal" aria-label={label} className={inputCls()} value={value} placeholder="0,00" onChange={(e) => onChange(e.target.value)} />
+    <div className={cx('min-w-0', narrow ? 'sm:w-20' : 'sm:w-28')}>
+      <label className="mb-1 block break-words text-[11px] font-semibold leading-tight text-muted sm:text-xs">{label}</label>
+      <input inputMode="decimal" aria-label={label} className={cx(inputCls(), 'text-base sm:text-[15px]')} value={value} placeholder="0,00" onChange={(e) => onChange(e.target.value)} />
     </div>
   )
 }
