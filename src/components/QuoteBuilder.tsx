@@ -245,7 +245,7 @@ export function QuoteBuilder({ origin, editId }: { origin?: string; editId?: str
     const year = today.slice(0, 4)
     const max = quotes.reduce((m, q) => Math.max(m, Number(q.number.split('-')[2]) || 0), 0)
     return editingRecord?.number ?? `ORC-${year}-${String(max + 1).padStart(4, '0')}`
-  }, [quotes, editingRecord?.number]
+  }, [quotes, editingRecord?.number])
 
   const proposal: ProposalData = {
     number: editingRecord?.number ?? nextNumber,
