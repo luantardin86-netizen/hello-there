@@ -312,7 +312,15 @@ export function getFleetAlerts(data: FleetData, date = today): FleetAlert[] {
       ['CRLV', vehicle.crlvDueAt],
       ['Seguro', vehicle.insuranceDueAt],
     ] as const) {
-      if (!dueAt) continue
+      if (!dueAt) {
+        alerts.push({
+          id: `${vehicle.id}-${label}-missing`,
+          title: `${label} não informado · ${vehicle.plate}`,
+          detail: 'Cadastre a data de validade para acompanhar o vencimento.',
+          severity: 'warning',
+        })
+        continue
+      }
       const days = daysBetween(date, dueAt)
       if (days <= 30) {
         alerts.push({
@@ -338,7 +346,15 @@ export function getFleetAlerts(data: FleetData, date = today): FleetAlert[] {
   }
 
   for (const driver of data.drivers.filter((d) => d.active)) {
-    if (!driver.cnhExpiresAt) continue
+    if (!driver.cnhExpiresAt) {
+      alerts.push({
+        id: `${driver.id}-cnh-missing`,
+        title: `CNH sem validade · ${driver.name}`,
+        detail: 'Informe a data de vencimento antes de escalar o motorista.',
+        severity: 'warning',
+      })
+      continue
+    }
     const days = daysBetween(date, driver.cnhExpiresAt)
     if (days <= 30) {
       alerts.push({
@@ -364,13 +380,15 @@ export function getFleetAlerts(data: FleetData, date = today): FleetAlert[] {
     }
   }
 
-  for (const inspection of data.inspections) {
-    if (Object.values(inspection.checks).some((ok) => !ok)) {
-      const vehicle = data.vehicles.find((v) => v.id === inspection.vehicleId)
+  for (const vehicle of data.vehicles) {
+    const latestInspection = data.inspections
+      .filter((inspection) => inspection.vehicleId === vehicle.id)
+      .sort((a, b) => b.date.localeCompare(a.date))[0]
+    if (latestInspection && Object.values(latestInspection.checks).some((ok) => !ok)) {
       alerts.push({
-        id: `${inspection.id}-inspection`,
-        title: `Checklist com ressalva · ${vehicle?.plate ?? 'Veículo'}`,
-        detail: inspection.notes || 'Há item(ns) reprovado(s) no checklist.',
+        id: `${latestInspection.id}-inspection`,
+        title: `Checklist com ressalva · ${vehicle.plate}`,
+        detail: latestInspection.notes || 'Há item(ns) reprovado(s) no último checklist.',
         severity: 'danger',
       })
     }

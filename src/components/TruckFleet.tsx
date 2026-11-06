@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   CalendarDays,
@@ -17,6 +17,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { useStore } from '../data/store'
+import { today, type Client, type Site } from '../data/fixtures'
 import { useFleet } from '../data/fleet-store'
 import {
   fuelEfficiencyKmL,
@@ -35,7 +36,7 @@ import {
   type TripStatus,
   type VehicleStatus,
 } from '../data/fleet'
-import { addDays, brl, dateBR, daysBetween, num, today } from '../lib/format'
+import { brl, dateBR, daysBetween, num } from '../lib/format'
 import { Badge, Button, Card, CardHeader, EmptyState, PageHeader, cx, inputCls } from './ui'
 import {
   DriverDialog,
@@ -155,8 +156,10 @@ export function TruckFleet() {
     const driverBooked = fleet.trips.some((trip) => trip.driverId === value.driverId && trip.date === value.date && trip.status !== 'Concluída' && trip.status !== 'Cancelada')
     if (vehicleBooked) return 'Este caminhão já possui uma viagem não encerrada nesta data.'
     if (driverBooked) return 'Este motorista já possui uma viagem não encerrada nesta data.'
-    if (vehicle.crlvDueAt && daysBetween(today, vehicle.crlvDueAt) < 0) return 'CRLV vencido: atualize o documento antes de programar a viagem.'
-    if (driver.cnhExpiresAt && daysBetween(today, driver.cnhExpiresAt) < 0) return 'CNH vencida: atualize o cadastro do motorista antes de escalar.'
+    if (!vehicle.crlvDueAt || daysBetween(value.date, vehicle.crlvDueAt) < 0) return 'CRLV ausente ou vencido na data da viagem.'
+    if (!vehicle.insuranceDueAt || daysBetween(value.date, vehicle.insuranceDueAt) < 0) return 'Seguro ausente ou vencido na data da viagem.'
+    if (!driver.cnhExpiresAt || daysBetween(value.date, driver.cnhExpiresAt) < 0) return 'CNH ausente ou vencida na data da viagem.'
+    if (daysBetween(today, value.date) < 0) return 'Não é possível programar uma viagem para uma data passada.'
     setData((current) => ({
       ...current,
       trips: [{ ...value, id: makeId('trip'), createdAt: new Date().toISOString(), demo: false }, ...current.trips],
@@ -166,6 +169,12 @@ export function TruckFleet() {
   }
 
   function changeTripStatus(tripId: string, status: TripStatus) {
+    const targetTrip = fleet.trips.find((trip) => trip.id === tripId)
+    const targetVehicle = targetTrip ? fleet.vehicles.find((vehicle) => vehicle.id === targetTrip.vehicleId) : null
+    if (isTripInProgress(status) && targetVehicle && ['Manutenção', 'Atenção', 'Inativo'].includes(targetVehicle.status)) {
+      toast({ tone: 'erro', title: 'Veículo indisponível', body: 'Resolva a manutenção ou a ressalva do checklist antes de despachar.' })
+      return
+    }
     setData((current) => {
       const target = current.trips.find((trip) => trip.id === tripId)
       if (!target) return current
@@ -197,6 +206,11 @@ export function TruckFleet() {
   }
 
   function changeMaintenanceStatus(maintenanceId: string, status: MaintenanceStatus) {
+    const targetMaintenance = fleet.maintenances.find((item) => item.id === maintenanceId)
+    if (status === 'Em andamento' && targetMaintenance && fleet.trips.some((trip) => trip.vehicleId === targetMaintenance.vehicleId && isTripInProgress(trip.status))) {
+      toast({ tone: 'erro', title: 'Caminhão em operação', body: 'Conclua ou encerre a viagem antes de iniciar a manutenção.' })
+      return
+    }
     setData((current) => {
       const previous = current.maintenances.find((item) => item.id === maintenanceId)
       if (!previous) return current
@@ -247,7 +261,7 @@ export function TruckFleet() {
       ...current,
       inspections: [{ ...value, id: makeId('inspection'), demo: false }, ...current.inspections],
       vehicles: current.vehicles.map((item) => item.id === value.vehicleId
-        ? { ...item, odometerKm: Math.max(item.odometerKm, value.odometerKm), status: approved ? (item.status === 'Atenção' ? 'Disponível' : item.status) : 'Atenção' }
+        ? { ...item, odometerKm: Math.max(item.odometerKm, value.odometerKm), status: approved ? (item.status === 'Atenção' ? (current.trips.some((trip) => trip.vehicleId === value.vehicleId && isTripInProgress(trip.status)) ? 'Em operação' : 'Disponível') : item.status) : 'Atenção' }
         : item),
     }))
     toast({
@@ -261,8 +275,8 @@ export function TruckFleet() {
   function deactivateVehicle(vehicleId: string) {
     const vehicle = fleet.vehicles.find((item) => item.id === vehicleId)
     if (!vehicle) return
-    if (fleet.trips.some((trip) => trip.vehicleId === vehicleId && isTripInProgress(trip.status))) {
-      toast({ tone: 'erro', title: 'Não é possível inativar', body: 'Encerre a viagem em andamento primeiro.' })
+    if (fleet.trips.some((trip) => trip.vehicleId === vehicleId && trip.status !== 'Concluída' && trip.status !== 'Cancelada')) {
+      toast({ tone: 'erro', title: 'Não é possível inativar', body: 'Encerre ou cancele as viagens programadas primeiro.' })
       return
     }
     setData((current) => ({ ...current, vehicles: current.vehicles.map((item) => item.id === vehicleId ? { ...item, status: 'Inativo' } : item) }))
@@ -640,7 +654,7 @@ export function TruckFleet() {
   )
 }
 
-function SummaryCard({ label, value, detail, icon, tone }: { label: string; value: string; detail: string; icon: React.ReactNode; tone?: 'ok' | 'info' | 'warn' | 'neutral' }) {
+function SummaryCard({ label, value, detail, icon, tone }: { label: string; value: string; detail: string; icon: ReactNode; tone?: 'ok' | 'info' | 'warn' | 'neutral' }) {
   return (
     <Card className="min-w-0 p-3 sm:p-4">
       <div className="flex items-center justify-between gap-2 text-muted"><span className="text-[11px] font-bold uppercase tracking-wide">{label}</span>{icon}</div>
@@ -650,7 +664,7 @@ function SummaryCard({ label, value, detail, icon, tone }: { label: string; valu
   )
 }
 
-function CostCard({ label, amount, caption, icon, count }: { label: string; amount: number; caption: string; icon: React.ReactNode; count?: boolean }) {
+function CostCard({ label, amount, caption, icon, count }: { label: string; amount: number; caption: string; icon: ReactNode; count?: boolean }) {
   return (
     <div className="rounded-md bg-surface-2 p-3">
       <div className="flex items-center justify-between text-xs font-semibold text-muted">{label}{icon}</div>
@@ -664,7 +678,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <div className="min-w-0"><p className="text-[10px] font-bold uppercase tracking-wide text-muted">{label}</p><p className="break-words text-sm font-semibold">{value}</p></div>
 }
 
-function TripListItem({ trip, fleet, clients, sites, onStatus }: { trip: FleetTrip; fleet: FleetData; clients: ReturnType<typeof useStore>['clients']; sites: ReturnType<typeof useStore>['sites']; onStatus: (id: string, status: TripStatus) => void }) {
+function TripListItem({ trip, fleet, clients, sites, onStatus }: { trip: FleetTrip; fleet: FleetData; clients: Client[]; sites: Site[]; onStatus: (id: string, status: TripStatus) => void }) {
   const vehicle = fleet.vehicles.find((item) => item.id === trip.vehicleId)
   const driver = fleet.drivers.find((item) => item.id === trip.driverId)
   const client = clients.find((item) => item.id === trip.clientId)
@@ -687,7 +701,7 @@ function TripListItem({ trip, fleet, clients, sites, onStatus }: { trip: FleetTr
   )
 }
 
-function TripCard({ trip, fleet, clients, sites, onStatus }: { trip: FleetTrip; fleet: FleetData; clients: ReturnType<typeof useStore>['clients']; sites: ReturnType<typeof useStore>['sites']; onStatus: (id: string, status: TripStatus) => void }) {
+function TripCard({ trip, fleet, clients, sites, onStatus }: { trip: FleetTrip; fleet: FleetData; clients: Client[]; sites: Site[]; onStatus: (id: string, status: TripStatus) => void }) {
   const vehicle = fleet.vehicles.find((item) => item.id === trip.vehicleId)
   const driver = fleet.drivers.find((item) => item.id === trip.driverId)
   const client = clients.find((item) => item.id === trip.clientId)

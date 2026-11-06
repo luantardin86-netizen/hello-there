@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Modal, inputCls, cx } from './ui'
-import { parseDecimal, today as unusedToday } from '../lib/format'
+import { daysBetween, parseDecimal } from '../lib/format'
 import { today } from '../data/fixtures'
 import { inspectionItems, type FleetDriver, type FleetFuelEntry, type FleetInspection, type FleetMaintenance, type FleetTrip, type FleetVehicle, type MaintenanceKind, type VehicleStatus, type VehicleType } from '../data/fleet'
 import type { Client, Site } from '../data/fixtures'
@@ -190,8 +190,8 @@ export function VehicleDialog({ open, initial, onClose, onSave }: { open: boolea
           <InputField label="Hodômetro atual (km)" value={odometer} onChange={setOdometer} type="number" min="0" step="1" required inputMode="numeric" />
           <InputField label="Próxima revisão (km)" value={nextKm} onChange={setNextKm} type="number" min="0" step="1" inputMode="numeric" />
           <SelectField label="Situação operacional" value={status} onChange={(v) => setStatus(v as VehicleStatus)} options={vehicleStatuses.map((v) => ({ value: v, label: v }))} required />
-          <InputField label="Validade do CRLV" value={crlv} onChange={setCrlv} type="date" />
-          <InputField label="Validade do seguro" value={insurance} onChange={setInsurance} type="date" />
+          <InputField label="Validade do CRLV" value={crlv} onChange={setCrlv} type="date" required />
+          <InputField label="Validade do seguro" value={insurance} onChange={setInsurance} type="date" required />
         </div>
         <TextAreaField label="Observações" value={notes} onChange={setNotes} placeholder="Garagem, identificação interna, restrições..." />
         <ErrorMessage>{error}</ErrorMessage>
@@ -225,7 +225,7 @@ export function DriverDialog({ open, initial, onClose, onSave }: { open: boolean
           <InputField label="Nome completo" value={name} onChange={setName} required />
           <InputField label="Telefone" value={phone} onChange={setPhone} type="tel" inputMode="tel" />
           <SelectField label="Categoria da CNH" value={category} onChange={setCategory} options={cnhCategories.map((v) => ({ value: v, label: v }))} required />
-          <InputField label="Validade da CNH" value={expiresAt} onChange={setExpiresAt} type="date" />
+          <InputField label="Validade da CNH" value={expiresAt} onChange={setExpiresAt} type="date" required />
         </div>
         <label className="flex items-center gap-2 text-sm font-medium">
           <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} className="h-4 w-4 accent-[var(--brand)]" />
@@ -276,8 +276,8 @@ export function TripDialog({
   const siteQuotes = quotes.filter((quote) => quote.clientId === clientId && quote.siteId === siteId)
   const usedVehicleIds = new Set(trips.filter((trip) => trip.date === date && trip.status !== 'Concluída' && trip.status !== 'Cancelada').map((trip) => trip.vehicleId))
   const usedDriverIds = new Set(trips.filter((trip) => trip.date === date && trip.status !== 'Concluída' && trip.status !== 'Cancelada').map((trip) => trip.driverId))
-  const availableVehicles = vehicles.filter((vehicle) => vehicle.status === 'Disponível' && !usedVehicleIds.has(vehicle.id))
-  const availableDrivers = drivers.filter((driver) => driver.active && !usedDriverIds.has(driver.id))
+  const availableVehicles = vehicles.filter((vehicle) => vehicle.status === 'Disponível' && !usedVehicleIds.has(vehicle.id) && !!vehicle.crlvDueAt && daysBetween(date, vehicle.crlvDueAt) >= 0 && !!vehicle.insuranceDueAt && daysBetween(date, vehicle.insuranceDueAt) >= 0)
+  const availableDrivers = drivers.filter((driver) => driver.active && !usedDriverIds.has(driver.id) && !!driver.cnhExpiresAt && daysBetween(date, driver.cnhExpiresAt) >= 0)
 
   function chooseQuote(id: string) {
     setQuoteId(id)
@@ -318,7 +318,7 @@ export function TripDialog({
   }
 
   return (
-    <DialogFrame open={open} onClose={onClose} title="Programar viagem / concretagem" subtitle="Vincule a entrega a um cliente e uma obra do CRM, reserve veículo e motorista e informe o volume previsto.">
+    <DialogFrame open={open} onClose={onClose} title="Programar viagem / concretagem" subtitle="Vincule a entrega a cliente e obra, reserve veículo e motorista e informe o volume. Só aparecem recursos com documentos válidos na data.">
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <InputField label="Data da entrega" value={date} onChange={setDate} type="date" required />

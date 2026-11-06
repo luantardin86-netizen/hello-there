@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
 import { CalendarDays, CircleAlert, FileText, Plus, Settings, Truck, Wallet } from 'lucide-react'
 import { useStore } from '../data/store'
+import { useFleet } from '../data/fleet-store'
+import { isTripInProgress } from '../data/fleet'
 import { computeDashboard } from '../data/metrics'
 import { activities, schedule, team, today, userName } from '../data/fixtures'
 import { pendingSettings } from '../data/settings'
@@ -13,6 +15,7 @@ export const Route = createFileRoute('/')({ component: Painel })
 
 function Painel() {
   const { quotes, opportunities, receivables, clients, sites, demoMode } = useStore()
+  const { data: fleetData } = useFleet()
   const [days, setDays] = useState(90)
   const [ownerId, setOwnerId] = useState('')
   const d = useMemo(() => computeDashboard(quotes, opportunities, receivables, { today, days, ownerId }), [quotes, opportunities, receivables, days, ownerId])
@@ -22,6 +25,10 @@ function Painel() {
     return { client: clients.find((c) => c.id === q?.clientId), site: sites.find((s) => s.id === q?.siteId), q }
   }
   const upcoming = (demoMode ? schedule : []).filter((e) => daysBetween(today, e.date) >= 0 && e.status !== 'Cancelada').sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+  const visibleFleetVehicles = fleetData.vehicles.filter((vehicle) => demoMode || !vehicle.demo)
+  const fleetTrips = fleetData.trips
+    .filter((trip) => (demoMode || !trip.demo) && trip.status !== 'Concluída' && trip.status !== 'Cancelada')
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
   const hasData = quotes.length > 0 || opportunities.length > 0
 
   return (
@@ -121,6 +128,48 @@ function Painel() {
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+            <Card>
+              <CardHeader
+                title="Frota operacional"
+                subtitle="Veículos cadastrados e status informado no módulo de caminhões."
+                action={<Link to="/caminhoes" className="text-sm font-semibold text-brand hover:underline">Abrir frota</Link>}
+              />
+              <div className="grid grid-cols-3 gap-2 p-4">
+                <div className="rounded-md bg-surface-2 p-3">
+                  <p className="text-[10px] font-bold uppercase text-muted">Veículos</p>
+                  <p className="font-display text-2xl font-extrabold tabular">{visibleFleetVehicles.filter((vehicle) => vehicle.status !== 'Inativo').length}</p>
+                </div>
+                <div className="rounded-md bg-surface-2 p-3">
+                  <p className="text-[10px] font-bold uppercase text-muted">Disponíveis</p>
+                  <p className="font-display text-2xl font-extrabold tabular text-ok">{visibleFleetVehicles.filter((vehicle) => vehicle.status === 'Disponível').length}</p>
+                </div>
+                <div className="rounded-md bg-surface-2 p-3">
+                  <p className="text-[10px] font-bold uppercase text-muted">Em operação</p>
+                  <p className="font-display text-2xl font-extrabold tabular text-info">{visibleFleetVehicles.filter((vehicle) => vehicle.status === 'Em operação').length}</p>
+                </div>
+              </div>
+              {fleetTrips.length === 0 ? (
+                <p className="border-t border-line p-4 text-sm text-muted">Nenhuma viagem aberta ou programada. <Link to="/caminhoes" className="font-semibold text-brand hover:underline">Programar viagem</Link></p>
+              ) : (
+                <ul className="divide-y divide-line border-t border-line">
+                  {fleetTrips.slice(0, 4).map((trip) => {
+                    const vehicle = visibleFleetVehicles.find((item) => item.id === trip.vehicleId)
+                    const client = clients.find((item) => item.id === trip.clientId)
+                    const site = sites.find((item) => item.id === trip.siteId)
+                    return (
+                      <li key={trip.id} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{site?.name ?? 'Obra não localizada'}</p>
+                          <p className="truncate text-xs text-muted">{client?.name ?? 'Cliente não localizado'} · {vehicle?.plate ?? 'Veículo não localizado'}</p>
+                          <p className="mt-1 text-xs text-muted">{dateBR(trip.date)} às {trip.time} · {num(trip.volumeM3, 2)} m³</p>
+                        </div>
+                        <Badge tone={isTripInProgress(trip.status) ? 'info' : 'neutral'}>{trip.status}</Badge>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </Card>
             <Card>
               <CardHeader title="Próximas concretagens" action={<CalendarDays className="h-5 w-5 text-brand" />} />
               {upcoming.length === 0 ? (
