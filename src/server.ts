@@ -19,7 +19,7 @@ type WebsiteLeadEvent = {
 // Fila temporária para o teste entre o POST externo e o navegador do CRM.
 // Os leads são copiados para o localStorage pelo StoreProvider do funil.
 const websiteLeadEvents: WebsiteLeadEvent[] = [];
-const MAX_WEBSITE_LEAD_EVENTS = 100;
+const MAX_WEBSITE_LEAD_EVENTS = 500;
 const WEBSITE_ORIGINS = new Set([
   "https://website-update-0355b9.netlify.app",
   "http://website-update-0355b9.netlify.app",
@@ -129,10 +129,13 @@ async function handleWebsiteLeadRequest(request: Request): Promise<Response | nu
     }
 
     const data = payload as Record<string, unknown>;
-    const nomeCliente = typeof data.nome_cliente === "string" ? data.nome_cliente.trim() : "";
+    // Aceita tanto o contrato interno quanto os rótulos enviados por formulários antigos.
+    const rawName = data.nome_cliente ?? data["Nome cliente"] ?? data.name;
+    const rawPhone = data.numero_cliente ?? data["Numero Cliente"] ?? data.phone;
+    const nomeCliente = typeof rawName === "string" ? rawName.trim() : "";
     const telefoneRecebido =
-      typeof data.numero_cliente === "string" || typeof data.numero_cliente === "number"
-        ? String(data.numero_cliente).trim()
+      typeof rawPhone === "string" || typeof rawPhone === "number"
+        ? String(rawPhone).trim()
         : "";
     const numeroCliente = telefoneRecebido.replace(/\D/g, "");
 
