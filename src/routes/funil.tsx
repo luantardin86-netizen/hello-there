@@ -6,6 +6,7 @@ import { useStore } from '../data/store'
 import { clientTypes, funnelStages, leadSources, lossReasons, regions, type StageId } from '../data/settings'
 import { team, today, userName, type Opportunity } from '../data/fixtures'
 import { brl, dateBR, daysBetween, parseDecimal } from '../lib/format'
+import { formatPhone } from '../lib/documents'
 import { Badge, Button, Card, Drawer, EmptyState, Field, Modal, PageHeader, SegTabs, cx, inputCls } from '../components/ui'
 import { Pagination, SortTh, useSortPage } from '../components/table'
 
@@ -47,6 +48,10 @@ function Funil() {
   const [detail, setDetail] = useState<string | null>(null)
 
   const clientName = (id: string) => clients.find((c) => c.id === id)?.name ?? '—'
+  const clientPhone = (id: string) => {
+    const client = clients.find((c) => c.id === id)
+    return client?.whatsapp || client?.phone || ''
+  }
 
   const filtered = useMemo(
     () =>
@@ -166,6 +171,9 @@ function Funil() {
                           <button onClick={() => setDetail(o.id)} className="block w-full text-left">
                             <p className="font-semibold leading-tight hover:text-brand">{o.title}</p>
                             <p className="truncate text-xs text-muted">{clientName(o.clientId)}</p>
+                            {clientPhone(o.clientId) && (
+                              <p className="mt-0.5 truncate text-xs text-muted">Tel. {formatPhone(clientPhone(o.clientId))}</p>
+                            )}
                           </button>
                           <div className="mt-2 flex flex-wrap items-center gap-1">
                             <span className="font-display text-lg font-bold tabular">{o.estimatedValue === null ? <span className="text-sm font-semibold text-muted">Valor a definir</span> : brl(o.estimatedValue)}</span>
