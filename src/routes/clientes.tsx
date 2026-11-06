@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
-import { Building2, FileText, MapPin, MessageCircle, Phone, Plus, Search, Users } from 'lucide-react'
+import { FileText, MapPin, MessageCircle, Phone, Plus, Search, Users } from 'lucide-react'
 import { useStore } from '../data/store'
 import { clientTypes, leadSources, regions } from '../data/settings'
 import { team, today, userName, type Client, type Site } from '../data/fixtures'
