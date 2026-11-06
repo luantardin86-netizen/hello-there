@@ -369,13 +369,17 @@ export function getFleetAlerts(data: FleetData, date = today): FleetAlert[] {
   for (const maintenance of data.maintenances) {
     if (maintenance.status === 'Concluída' || maintenance.status === 'Cancelada') continue
     const days = daysBetween(date, maintenance.dueAt)
-    if (days < 0) {
+    if (days <= 30) {
       const vehicle = data.vehicles.find((v) => v.id === maintenance.vehicleId)
       alerts.push({
-        id: `${maintenance.id}-overdue`,
-        title: `Manutenção atrasada · ${vehicle?.plate ?? 'Veículo'}`,
-        detail: maintenance.description,
-        severity: 'danger',
+        id: `${maintenance.id}-due`,
+        title: days < 0
+          ? `Manutenção atrasada · ${vehicle?.plate ?? 'Veículo'}`
+          : `Manutenção próxima · ${vehicle?.plate ?? 'Veículo'}`,
+        detail: days < 0
+          ? maintenance.description + ` · vencida há ${Math.abs(days)} dia(s)`
+          : maintenance.description + (days === 0 ? ' · vence hoje' : ` · vence em ${days} dia(s)`),
+        severity: days <= 7 ? 'danger' : 'warning',
       })
     }
   }

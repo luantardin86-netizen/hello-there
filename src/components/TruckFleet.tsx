@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
-  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -159,6 +158,11 @@ export function TruckFleet() {
     if (!vehicle.crlvDueAt || daysBetween(value.date, vehicle.crlvDueAt) < 0) return 'CRLV ausente ou vencido na data da viagem.'
     if (!vehicle.insuranceDueAt || daysBetween(value.date, vehicle.insuranceDueAt) < 0) return 'Seguro ausente ou vencido na data da viagem.'
     if (!driver.cnhExpiresAt || daysBetween(value.date, driver.cnhExpiresAt) < 0) return 'CNH ausente ou vencida na data da viagem.'
+    if (vehicle.nextMaintenanceKm !== null && vehicle.odometerKm >= vehicle.nextMaintenanceKm) return 'A revisão por hodômetro está vencida. Registre a manutenção antes de escalar.'
+    const latestInspection = fleet.inspections
+      .filter((inspection) => inspection.vehicleId === vehicle.id)
+      .sort((a, b) => b.date.localeCompare(a.date))[0]
+    if (latestInspection && Object.values(latestInspection.checks).some((ok) => !ok)) return 'O último checklist possui ressalvas. Faça uma nova inspeção aprovada antes de escalar.'
     if (daysBetween(today, value.date) < 0) return 'Não é possível programar uma viagem para uma data passada.'
     setData((current) => ({
       ...current,
@@ -171,8 +175,24 @@ export function TruckFleet() {
   function changeTripStatus(tripId: string, status: TripStatus) {
     const targetTrip = fleet.trips.find((trip) => trip.id === tripId)
     const targetVehicle = targetTrip ? fleet.vehicles.find((vehicle) => vehicle.id === targetTrip.vehicleId) : null
-    if (isTripInProgress(status) && targetVehicle && ['Manutenção', 'Atenção', 'Inativo'].includes(targetVehicle.status)) {
-      toast({ tone: 'erro', title: 'Veículo indisponível', body: 'Resolva a manutenção ou a ressalva do checklist antes de despachar.' })
+    const targetDriver = targetTrip ? fleet.drivers.find((driver) => driver.id === targetTrip.driverId) : null
+    const latestInspection = targetVehicle ? fleet.inspections
+      .filter((inspection) => inspection.vehicleId === targetVehicle.id)
+      .sort((a, b) => b.date.localeCompare(a.date))[0] : null
+    const blockedByInspection = !!latestInspection && Object.values(latestInspection.checks).some((ok) => !ok)
+    const blockedByDocuments = !!targetVehicle && (
+      !targetVehicle.crlvDueAt ||
+      !targetVehicle.insuranceDueAt ||
+      daysBetween(targetTrip?.date ?? today, targetVehicle.crlvDueAt) < 0 ||
+      daysBetween(targetTrip?.date ?? today, targetVehicle.insuranceDueAt) < 0
+    )
+    const blockedByDriver = !!targetDriver && (!targetDriver.cnhExpiresAt || daysBetween(targetTrip?.date ?? today, targetDriver.cnhExpiresAt) < 0)
+    const blockedByService = !!targetVehicle && targetVehicle.nextMaintenanceKm !== null && targetVehicle.odometerKm >= targetVehicle.nextMaintenanceKm
+    if (isTripInProgress(status) && targetVehicle && (
+      ['Manutenção', 'Atenção', 'Inativo'].includes(targetVehicle.status) ||
+      blockedByInspection || blockedByDocuments || blockedByDriver || blockedByService
+    )) {
+      toast({ tone: 'erro', title: 'Veículo ou motorista indisponível', body: 'Resolva manutenção, revisão, documentação, CNH ou ressalvas do checklist antes de despachar.' })
       return
     }
     setData((current) => {

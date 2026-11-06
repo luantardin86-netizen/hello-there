@@ -276,7 +276,7 @@ export function TripDialog({
   const siteQuotes = quotes.filter((quote) => quote.clientId === clientId && quote.siteId === siteId)
   const usedVehicleIds = new Set(trips.filter((trip) => trip.date === date && trip.status !== 'Concluída' && trip.status !== 'Cancelada').map((trip) => trip.vehicleId))
   const usedDriverIds = new Set(trips.filter((trip) => trip.date === date && trip.status !== 'Concluída' && trip.status !== 'Cancelada').map((trip) => trip.driverId))
-  const availableVehicles = vehicles.filter((vehicle) => vehicle.status === 'Disponível' && !usedVehicleIds.has(vehicle.id) && !!vehicle.crlvDueAt && daysBetween(date, vehicle.crlvDueAt) >= 0 && !!vehicle.insuranceDueAt && daysBetween(date, vehicle.insuranceDueAt) >= 0)
+  const availableVehicles = vehicles.filter((vehicle) => vehicle.status === 'Disponível' && !usedVehicleIds.has(vehicle.id) && !!vehicle.crlvDueAt && daysBetween(date, vehicle.crlvDueAt) >= 0 && !!vehicle.insuranceDueAt && daysBetween(date, vehicle.insuranceDueAt) >= 0 && (vehicle.nextMaintenanceKm === null || vehicle.odometerKm < vehicle.nextMaintenanceKm))
   const availableDrivers = drivers.filter((driver) => driver.active && !usedDriverIds.has(driver.id) && !!driver.cnhExpiresAt && daysBetween(date, driver.cnhExpiresAt) >= 0)
 
   function chooseQuote(id: string) {
@@ -285,7 +285,7 @@ export function TripDialog({
     if (!quote) return
     setClientId(quote.clientId)
     setSiteId(quote.siteId)
-    if (quote.result.concreteVolume > 0) setVolume(String(quote.result.concreteVolume))
+    setVolume('')
     if (quote.fck !== null) setFck(String(quote.fck))
   }
 
@@ -297,6 +297,10 @@ export function TripDialog({
       if (!driverId) throw new Error('Selecione um motorista disponível.')
       const volumeNumber = numberValue(volume, 'Volume em m³', true, false)
       const fckNumber = numberValue(fck, 'FCK', false, false)
+      const selectedVehicle = vehicles.find((vehicle) => vehicle.id === vehicleId)
+      if (selectedVehicle?.capacityM3 !== null && selectedVehicle?.capacityM3 !== undefined && volumeNumber !== null && volumeNumber > selectedVehicle.capacityM3) {
+        throw new Error('O volume desta viagem supera a capacidade do caminhão (' + selectedVehicle.capacityM3.toLocaleString('pt-BR') + ' m³).')
+      }
       const message = onSave({
         date,
         time,
@@ -328,10 +332,10 @@ export function TripDialog({
           <SelectField label="Orçamento relacionado (opcional)" value={quoteId} onChange={chooseQuote} options={siteQuotes.map((quote) => ({ value: quote.id, label: quote.number + ' · ' + quote.result.concreteVolume.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + ' m³' }))} disabled={!siteId || siteQuotes.length === 0} />
           <SelectField label="Caminhão disponível" value={vehicleId} onChange={setVehicleId} options={availableVehicles.map((vehicle) => ({ value: vehicle.id, label: vehicle.plate + ' · ' + vehicle.type }))} required disabled={availableVehicles.length === 0} />
           <SelectField label="Motorista disponível" value={driverId} onChange={setDriverId} options={availableDrivers.map((driver) => ({ value: driver.id, label: driver.name + ' · CNH ' + driver.cnhCategory }))} required disabled={availableDrivers.length === 0} />
-          <InputField label="Volume previsto (m³)" value={volume} onChange={setVolume} type="number" min="0.01" step="0.01" required inputMode="decimal" />
+          <InputField label="Volume desta viagem (m³)" value={volume} onChange={setVolume} type="number" min="0.01" step="0.01" required inputMode="decimal" />
           <InputField label="FCK (MPa)" value={fck} onChange={setFck} type="number" min="1" step="1" inputMode="numeric" />
         </div>
-        {availableVehicles.length === 0 && <p className="text-xs font-medium text-warn">Não há caminhões disponíveis para esta data. Verifique a situação da frota e as viagens já programadas.</p>}
+        {availableVehicles.length === 0 && <p className="text-xs font-medium text-warn">Não há caminhões disponíveis e regulares nesta data. Verifique situação, documentos, revisão e viagens já programadas.</p>}
         {availableDrivers.length === 0 && <p className="text-xs font-medium text-warn">Não há motoristas ativos livres para esta data.</p>}
         <TextAreaField label="Instruções para a operação" value={notes} onChange={setNotes} placeholder="Acesso, janela de descarga, necessidade de bomba..." />
         <ErrorMessage>{error}</ErrorMessage>

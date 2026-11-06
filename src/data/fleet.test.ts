@@ -35,6 +35,25 @@ describe('gestão de frota', () => {
     expect(alerts.some((alert) => alert.title.startsWith('Revisão por hodômetro'))).toBe(false)
   })
 
+  it('avisa quando documentos ou CNH estão sem validade cadastrada', () => {
+    const data = createDemoFleet()
+    data.vehicles[0].crlvDueAt = ''
+    data.vehicles[0].insuranceDueAt = ''
+    data.drivers[0].cnhExpiresAt = ''
+    const alerts = getFleetAlerts(data)
+    expect(alerts.some((alert) => alert.title.includes('CRLV não informado'))).toBe(true)
+    expect(alerts.some((alert) => alert.title.includes('Seguro não informado'))).toBe(true)
+    expect(alerts.some((alert) => alert.title.includes('CNH sem validade'))).toBe(true)
+  })
+
+  it('avisa sobre manutenção preventiva dentro dos próximos 30 dias', () => {
+    const data = createDemoFleet()
+    data.maintenances[0].status = 'Agendada'
+    data.maintenances[0].dueAt = '2026-01-20'
+    const alerts = getFleetAlerts(data, '2026-01-01')
+    expect(alerts.some((alert) => alert.title.startsWith('Manutenção próxima'))).toBe(true)
+  })
+
   it('não alerta quando documentos e CNH estão fora da janela de 30 dias', () => {
     const data = createDemoFleet()
     data.vehicles.forEach((vehicle) => {
