@@ -158,7 +158,7 @@ export function computeElement(
       return { value: null, error: preset.error!, incomplete: false }
     if ('missing' in preset)
       return { value: null, error: null, incomplete: true }
-    return { value: preset.value * n, error: null, incomplete: false }
+    return { value: (preset as { value: number }).value * n, error: null, incomplete: false }
   }
 
   if (type.startsWith('estacas') || type.startsWith('tubul')) {
