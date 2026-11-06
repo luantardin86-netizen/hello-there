@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useIsMobile } from '../hooks/use-mobile'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Bell, Clock, KanbanSquare, List, SquareKanban, TriangleAlert } from 'lucide-react'
+import { Bell, Clock, FileText, KanbanSquare, List, NotebookPen, Smartphone, SquareKanban, TriangleAlert } from 'lucide-react'
 import { useStore } from '../data/store'
 import { funnelStages, leadSources, lossReasons, type StageId } from '../data/settings'
 import { team, today, userName, type Opportunity } from '../data/fixtures'
@@ -26,8 +27,15 @@ function followUp(o: Opportunity) {
 }
 
 function Funil() {
-  const { opportunities, clients, updateOpportunity, toast } = useStore()
+  const { opportunities, clients, moveOpportunity, toast } = useStore()
+  const isMobile = useIsMobile()
   const [view, setView] = useState<'kanban' | 'tabela'>('kanban')
+  useEffect(() => {
+    if (isMobile) setView('tabela')
+  }, [isMobile])
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [overStage, setOverStage] = useState<StageId | null>(null)
+  const [reporting, setReporting] = useState<string | null>(null)
   const [owner, setOwner] = useState('')
   const [source, setSource] = useState('')
   const [period, setPeriod] = useState('')
@@ -54,8 +62,8 @@ function Funil() {
     if (to === o.stage) return
     if (to === 'perdido') return setLosing({ id: o.id, reason: '', note: '' })
     if (to === 'fechado') return setClosing(o.id)
-    updateOpportunity(o.id, { stage: to, lossReason: null }, `Etapa alterada: ${stageLabel(o.stage)} → ${stageLabel(to)}`)
-    toast({ tone: 'ok', title: 'Etapa atualizada', body: `${o.title}: ${stageLabel(to)}` })
+    const extra = moveOpportunity(o.id, to, `Etapa alterada: ${stageLabel(o.stage)} → ${stageLabel(to)}`, { lossReason: null })
+    toast({ tone: 'ok', title: 'Etapa atualizada', body: `${o.title}: ${stageLabel(to)}${extra ? `. ${extra}.` : ''}` })
   }
 
   const t = useSortPage(filtered, { title: (o) => o.title, stage: (o) => funnelStages.findIndex((s) => s.id === o.stage), value: (o) => o.estimatedValue ?? -1, next: (o) => o.nextContact ?? '9999', entered: (o) => o.enteredAt }, { key: 'next', dir: 'asc' }, 10)
@@ -69,6 +77,13 @@ function Funil() {
         description="Acompanhe cada oportunidade do primeiro contato ao fechamento. O fechamento é sempre uma ação explícita."
         actions={<SegTabs label="Visualização" value={view} onChange={setView} options={[{ value: 'kanban', label: <span className="inline-flex items-center gap-1"><SquareKanban className="h-4 w-4" /> Colunas</span> }, { value: 'tabela', label: <span className="inline-flex items-center gap-1"><List className="h-4 w-4" /> Tabela</span> }]} />}
       />
+
+      {(isMobile || view === 'kanban') && (
+        <div role="note" className={cx('mb-4 flex items-center gap-2 rounded-md border border-warn/40 bg-surface px-3 py-2 text-sm', !isMobile && 'md:hidden')}>
+          <Smartphone className="h-4 w-4 shrink-0 text-warn" />
+          <span><strong>Use o modo tabela para celular.</strong> No computador, arraste os cards entre as colunas.</span>
+        </div>
+      )}
 
       <div className="mb-5 grid gap-3 md:grid-cols-3">
         <AlertBox icon={<TriangleAlert className="h-4 w-4" />} tone="red" title="Follow-ups atrasados" items={overdue} onOpen={setDetail} clientName={clientName} />
@@ -108,7 +123,19 @@ function Funil() {
               const items = filtered.filter((o) => o.stage === s.id)
               const total = items.reduce((a, o) => a + (o.estimatedValue ?? 0), 0)
               return (
-                <section key={s.id} aria-label={s.label} className={cx('flex min-h-[320px] flex-col rounded-lg border border-line bg-surface-2', s.id === 'fechado' && 'border-ok/30', s.id === 'perdido' && 'opacity-80')}>
+                <section
+                  key={s.id}
+                  aria-label={s.label}
+                  onDragOver={(e) => { if (dragId) { e.preventDefault(); setOverStage(s.id) } }}
+                  onDragLeave={() => setOverStage((x) => (x === s.id ? null : x))}
+                  onDrop={(e) => {
+                    e.preventDefault()
+                    const o = opportunities.find((x) => x.id === (e.dataTransfer.getData('text/plain') || dragId))
+                    setDragId(null); setOverStage(null)
+                    if (o) move(o, s.id)
+                  }}
+                  className={cx('flex min-h-[320px] flex-col rounded-lg border border-line bg-surface-2 transition-colors', s.id === 'fechado' && 'border-ok/30', s.id === 'perdido' && 'opacity-80', overStage === s.id && 'border-brand bg-brand/5')}
+                >
                   <header className="border-b border-line px-3 py-3">
                     <div className="flex items-center justify-between">
                       <h2 className="text-base font-bold uppercase leading-tight">
@@ -123,7 +150,13 @@ function Funil() {
                     {items.map((o) => {
                       const f = followUp(o)
                       return (
-                        <article key={o.id} className="anim-fade rounded-md border border-line bg-surface p-3 shadow-sm">
+                        <article
+                          key={o.id}
+                          draggable
+                          onDragStart={(e) => { e.dataTransfer.setData('text/plain', o.id); e.dataTransfer.effectAllowed = 'move'; setDragId(o.id) }}
+                          onDragEnd={() => { setDragId(null); setOverStage(null) }}
+                          className={cx('anim-fade cursor-grab rounded-md border border-line bg-surface p-3 shadow-sm active:cursor-grabbing', dragId === o.id && 'opacity-40')}
+                        >
                           <button onClick={() => setDetail(o.id)} className="block w-full text-left">
                             <p className="font-semibold leading-tight hover:text-brand">{o.title}</p>
                             <p className="truncate text-xs text-muted">{clientName(o.clientId)}</p>
@@ -137,6 +170,12 @@ function Funil() {
                           </p>
                           {isOpen(o) && <p className="mt-1 text-xs"><span className="font-semibold">Próx.:</span> {o.nextAction} {o.nextContact && `(${dateBR(o.nextContact)})`}</p>}
                           {o.lossReason && <p className="mt-1 text-xs text-brand">Motivo: {o.lossReason}</p>}
+                          <div className="mt-2 flex items-center gap-2 text-xs">
+                            <button onClick={() => setReporting(o.id)} className="inline-flex items-center gap-1 font-semibold text-brand hover:underline">
+                              <NotebookPen className="h-3.5 w-3.5" /> Relatório{o.reports?.length ? ` (${o.reports.length})` : ''}
+                            </button>
+                            {o.quoteId && <span className="ml-auto inline-flex items-center gap-1 text-muted"><FileText className="h-3.5 w-3.5" /> Orçamento</span>}
+                          </div>
                           <select aria-label={`Mover ${o.title}`} className={cx(inputCls(), 'mt-2 h-8 text-xs')} value={o.stage} onChange={(e) => move(o, e.target.value as StageId)}>
                             {funnelStages.map((x) => <option key={x.id} value={x.id}>{x.id === o.stage ? `Etapa: ${x.label}` : `Mover para: ${x.label}`}</option>)}
                           </select>
@@ -172,8 +211,13 @@ function Funil() {
                       <td className="px-4 py-3">
                         <button onClick={() => setDetail(o.id)} className="text-left font-semibold hover:text-brand">{o.title}</button>
                         <span className="block text-xs text-muted">{clientName(o.clientId)} · {o.source} · {userName(o.ownerId)}</span>
+                        <button onClick={() => setReporting(o.id)} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"><NotebookPen className="h-3.5 w-3.5" /> Relatório{o.reports?.length ? ` (${o.reports.length})` : ''}</button>
                       </td>
-                      <td className="px-4 py-3"><Badge tone={o.stage === 'fechado' ? 'ok' : o.stage === 'perdido' ? 'red' : 'neutral'}>{stageLabel(o.stage)}</Badge></td>
+                      <td className="px-4 py-3">
+                        <select aria-label={`Etapa de ${o.title}`} className={cx(inputCls(), 'h-8 w-auto text-xs')} value={o.stage} onChange={(e) => move(o, e.target.value as StageId)}>
+                          {funnelStages.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+                        </select>
+                      </td>
                       <td className="px-4 py-3 text-right font-semibold tabular">{o.estimatedValue === null ? '—' : brl(o.estimatedValue)}</td>
                       <td className="px-4 py-3 tabular">{dateBR(o.lastContact)}</td>
                       <td className="px-4 py-3 tabular">
@@ -203,7 +247,7 @@ function Funil() {
               onClick={() => {
                 if (!losing) return
                 const o = opportunities.find((x) => x.id === losing.id)!
-                updateOpportunity(o.id, { stage: 'perdido', lossReason: losing.reason, nextContact: null }, `Marcada como perdida — motivo: ${losing.reason}${losing.note ? ` (${losing.note})` : ''}`)
+                moveOpportunity(o.id, 'perdido', `Marcada como perdida — motivo: ${losing.reason}${losing.note ? ` (${losing.note})` : ''}`, { lossReason: losing.reason, nextContact: null })
                 toast({ tone: 'ok', title: 'Perda registrada', body: o.title })
                 setLosing(null)
               }}
@@ -239,7 +283,7 @@ function Funil() {
               variant="primary"
               onClick={() => {
                 const o = opportunities.find((x) => x.id === closing)!
-                updateOpportunity(o.id, { stage: 'fechado', nextContact: null, lossReason: null }, `Fechamento confirmado: ${stageLabel(o.stage)} → Fechado`)
+                moveOpportunity(o.id, 'fechado', `Fechamento confirmado: ${stageLabel(o.stage)} → Fechado`, { nextContact: null, lossReason: null })
                 toast({ tone: 'ok', title: 'Oportunidade fechada', body: o.title })
                 setClosing(null)
               }}
@@ -251,6 +295,8 @@ function Funil() {
       >
         <p className="text-sm">Confirme que o cliente aceitou a proposta. Gerar ou enviar um orçamento não fecha a oportunidade automaticamente.</p>
       </Modal>
+
+      {reporting && <ReportModal id={reporting} onClose={() => setReporting(null)} />}
 
       {selected && <OpportunityDrawer o={selected} onClose={() => setDetail(null)} clientName={clientName(selected.clientId)} onMove={(to) => move(selected, to)} />}
     </>
@@ -326,6 +372,7 @@ function OpportunityDrawer({ o, onClose, clientName, onMove }: { o: Opportunity;
             Registrar contato
           </Button>
         </div>
+        <ReportList o={o} />
         <section>
           <h4 className="mb-2 text-lg font-bold uppercase">Histórico</h4>
           <ol className="space-y-2 border-l-2 border-line pl-4 text-sm">
@@ -339,5 +386,54 @@ function OpportunityDrawer({ o, onClose, clientName, onMove }: { o: Opportunity;
         </section>
       </div>
     </Drawer>
+  )
+}
+
+function ReportList({ o }: { o: Opportunity }) {
+  if (!o.reports?.length) return null
+  return (
+    <section>
+      <h4 className="mb-2 text-lg font-bold uppercase">Relatórios de atendimento</h4>
+      <ul className="space-y-2 text-sm">
+        {o.reports.map((r, i) => (
+          <li key={i} className="rounded-md border border-line bg-surface-2 p-3">
+            <p className="whitespace-pre-wrap">{r.text}</p>
+            <p className="mt-1 text-xs text-muted">{dateBR(r.at)} · {userName(r.by)}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function ReportModal({ id, onClose }: { id: string; onClose: () => void }) {
+  const { opportunities, clients, addReport, toast } = useStore()
+  const o = opportunities.find((x) => x.id === id)
+  const [needs, setNeeds] = useState('')
+  const [obs, setObs] = useState('')
+  if (!o) return null
+  const c = clients.find((x) => x.id === o.clientId)
+  const text = [needs.trim() && `Necessidades do cliente: ${needs.trim()}`, obs.trim() && `Observações do atendimento: ${obs.trim()}`].filter(Boolean).join('\n')
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Relatório do atendimento"
+      footer={
+        <>
+          <Button onClick={onClose}>Fechar</Button>
+          <Button variant="primary" disabled={!text} onClick={() => { addReport(o.id, text); toast({ tone: 'ok', title: 'Relatório salvo', body: o.title }); setNeeds(''); setObs('') }}>
+            Salvar relatório
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-sm text-muted">{o.title} · {c?.name}{c?.phone ? ` · ${c.phone}` : ''}</p>
+        <Field label="Necessidades do cliente">{(fid) => <textarea id={fid} rows={3} className={cx(inputCls(), 'h-auto py-2')} placeholder="Ex.: laje de 80 m², concreto FCK 25, precisa de bomba" value={needs} onChange={(e) => setNeeds(e.target.value)} />}</Field>
+        <Field label="Observações do atendimento">{(fid) => <textarea id={fid} rows={3} className={cx(inputCls(), 'h-auto py-2')} placeholder="Ex.: cliente pediu retorno à tarde, obra começa em 2 semanas" value={obs} onChange={(e) => setObs(e.target.value)} />}</Field>
+        <ReportList o={o} />
+      </div>
+    </Modal>
   )
 }
