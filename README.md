@@ -51,3 +51,12 @@ Na tela **Configurações**, use **Testar conexão** no cartão “Conexão com 
 - Em hospedagem, configure as duas variáveis `VITE_*` no ambiente de build da plataforma. O Vite incorpora esses valores no bundle durante o build.
 
 Esta etapa prepara a conexão com a API; não cria tabelas, migrations, autenticação de usuários ou políticas RLS.
+
+
+## Recebimento de leads da landing page
+
+O servidor do CRM recebe o webhook em POST /api/webhooks/leads. O formulário da landing page encaminha os dados diretamente para esse endereço; não é necessário ativar Supabase ou Netlify Database para esse fluxo.
+
+O CRM mantém até 500 eventos em uma fila em memória no processo do servidor. Enquanto o CRM está aberto, StoreProvider consulta GET /api/webhooks/leads/pending a cada 3 segundos, cria/atualiza o cliente e cria uma oportunidade na etapa **1. Novo lead**. A aplicação grava o resultado no localStorage do navegador do CRM.
+
+**Limite de persistência:** a fila em memória não é um banco de dados e pode ser perdida quando a instância do servidor reiniciar ou for substituída antes que o navegador do CRM importe os eventos. Depois de importados, os registros permanecem no navegador que os recebeu; isso não sincroniza automaticamente entre computadores ou navegadores diferentes. Para operação permanente/multiusuário, será necessário conectar um armazenamento persistente gerenciado ou hospedar o servidor em uma máquina com disco persistente.
