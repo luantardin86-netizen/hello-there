@@ -10,16 +10,21 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CaminhoesRouteImport } from './routes/caminhoes'
 import { Route as ClientesRouteImport } from './routes/clientes'
 import { Route as ConfiguracoesRouteImport } from './routes/configuracoes'
 import { Route as FunilRouteImport } from './routes/funil'
 import { Route as OrcamentosIndexRouteImport } from './routes/orcamentos.index'
 import { Route as OrcamentosNovoRouteImport } from './routes/orcamentos.novo'
-import { Route as CaminhoesRouteImport } from './routes/caminhoes'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CaminhoesRoute = CaminhoesRouteImport.update({
+  id: '/caminhoes',
+  path: '/caminhoes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ClientesRoute = ClientesRouteImport.update({
@@ -47,78 +52,73 @@ const OrcamentosNovoRoute = OrcamentosNovoRouteImport.update({
   path: '/orcamentos/novo',
   getParentRoute: () => rootRouteImport,
 } as any)
-const CaminhoesRoute = CaminhoesRouteImport.update({
-  id: '/caminhoes',
-  path: '/caminhoes',
-  getParentRoute: () => rootRouteImport,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/caminhoes': typeof CaminhoesRoute
   '/clientes': typeof ClientesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos/': typeof OrcamentosIndexRoute
-  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/caminhoes': typeof CaminhoesRoute
   '/clientes': typeof ClientesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos': typeof OrcamentosIndexRoute
-  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/caminhoes': typeof CaminhoesRoute
   '/clientes': typeof ClientesRoute
   '/configuracoes': typeof ConfiguracoesRoute
   '/funil': typeof FunilRoute
   '/orcamentos/novo': typeof OrcamentosNovoRoute
   '/orcamentos/': typeof OrcamentosIndexRoute
-  '/caminhoes': typeof CaminhoesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/caminhoes'
     | '/clientes'
     | '/configuracoes'
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos/'
-    | '/caminhoes'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/caminhoes'
     | '/clientes'
     | '/configuracoes'
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos'
-    | '/caminhoes'
   id:
     | '__root__'
     | '/'
+    | '/caminhoes'
     | '/clientes'
     | '/configuracoes'
     | '/funil'
     | '/orcamentos/novo'
     | '/orcamentos/'
-    | '/caminhoes'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CaminhoesRoute: typeof CaminhoesRoute
   ClientesRoute: typeof ClientesRoute
   ConfiguracoesRoute: typeof ConfiguracoesRoute
   FunilRoute: typeof FunilRoute
   OrcamentosNovoRoute: typeof OrcamentosNovoRoute
   OrcamentosIndexRoute: typeof OrcamentosIndexRoute
-  CaminhoesRoute: typeof CaminhoesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -128,6 +128,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/caminhoes': {
+      id: '/caminhoes'
+      path: '/caminhoes'
+      fullPath: '/caminhoes'
+      preLoaderRoute: typeof CaminhoesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/clientes': {
@@ -165,24 +172,17 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrcamentosNovoRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/caminhoes': {
-      id: '/caminhoes'
-      path: '/caminhoes'
-      fullPath: '/caminhoes'
-      preLoaderRoute: typeof CaminhoesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CaminhoesRoute: CaminhoesRoute,
   ClientesRoute: ClientesRoute,
   ConfiguracoesRoute: ConfiguracoesRoute,
   FunilRoute: FunilRoute,
   OrcamentosNovoRoute: OrcamentosNovoRoute,
   OrcamentosIndexRoute: OrcamentosIndexRoute,
-  CaminhoesRoute: CaminhoesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
