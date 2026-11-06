@@ -2,11 +2,12 @@ import { HeadContent, Outlet, Scripts, createRootRoute } from '@tanstack/react-r
 
 import '../styles.css'
 import { StoreProvider } from '../data/store'
+import { FleetProvider } from '../data/fleet-store'
 import { AppShell } from '../components/AppShell'
 
 const siteName = 'Qualimix CRM — Gestão comercial e operacional'
 const siteDescription =
-  'CRM da Qualimix: clientes, obras, funil comercial, orçamentos de concreto usinado e pisos, agenda de concretagens e contas a receber.'
+  'CRM da Qualimix: clientes, obras, funil comercial, orçamentos de concreto usinado e pisos, agenda de concretagens, frota e contas a receber.'
 
 const themeScript = `try{var t=localStorage.getItem('qmx-theme');if(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)t='dark';document.documentElement.dataset.theme=t||'light'}catch(e){}`
 
@@ -38,9 +39,11 @@ export const Route = createRootRoute({
 function RootLayout() {
   return (
     <StoreProvider>
-      <AppShell>
-        <Outlet />
-      </AppShell>
+      <FleetProvider>
+        <AppShell>
+          <Outlet />
+        </AppShell>
+      </FleetProvider>
     </StoreProvider>
   )
 }

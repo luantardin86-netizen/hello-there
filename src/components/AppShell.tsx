@@ -38,7 +38,7 @@ const nav: { group: string; items: NavItem[] }[] = [
     items: [
       { label: 'Pedidos', icon: ClipboardList, soon: 'Em breve' },
       { label: 'Agenda de concretagens', icon: CalendarDays, soon: 'Em breve' },
-      { label: 'Caminhões', icon: Truck, soon: 'Em breve' },
+      { label: 'Caminhões', icon: Truck, to: '/caminhoes' },
     ],
   },
   { group: 'Financeiro', items: [{ label: 'Contas a receber', icon: Wallet, soon: 'Em breve' }] },
