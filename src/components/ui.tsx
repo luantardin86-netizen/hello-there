@@ -67,7 +67,7 @@ export function Card({ children, className, ...rest }: React.HTMLAttributes<HTML
 
 export function CardHeader({ title, subtitle, action, step }: { title: string; subtitle?: ReactNode; action?: ReactNode; step?: number }) {
   return (
-    <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
+    <header className="flex flex-wrap items-start justify-between gap-2 border-b border-line px-3 py-3 sm:gap-3 sm:px-5 sm:py-4">
       <div className="flex items-start gap-3 min-w-0">
         {step !== undefined && (
           <span className="font-display mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded bg-ink text-sm font-bold text-bg">
@@ -75,8 +75,8 @@ export function CardHeader({ title, subtitle, action, step }: { title: string; s
           </span>
         )}
         <div className="min-w-0">
-          <h2 className="text-xl font-bold uppercase leading-tight">{title}</h2>
-          {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+          <h2 className="text-lg font-bold uppercase leading-tight sm:text-xl">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-muted sm:text-sm">{subtitle}</p>}
         </div>
       </div>
       {action}
@@ -86,7 +86,7 @@ export function CardHeader({ title, subtitle, action, step }: { title: string; s
 
 export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?: string; title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3 sm:mb-6 sm:gap-4">
       <div className="min-w-0">
         {eyebrow && (
           <p className="mb-1 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-brand">
@@ -94,7 +94,7 @@ export function PageHeader({ eyebrow, title, description, actions }: { eyebrow?:
             {eyebrow}
           </p>
         )}
-        <h1 className="text-4xl font-extrabold uppercase leading-none md:text-5xl">{title}</h1>
+        <h1 className="text-3xl font-extrabold uppercase leading-none sm:text-4xl md:text-5xl">{title}</h1>
         {description && <p className="mt-2 max-w-2xl text-muted">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

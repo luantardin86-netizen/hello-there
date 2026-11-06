@@ -272,7 +272,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
         )}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-w-0 gap-4 sm:gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="min-w-0 space-y-6">
           {/* 1. Cliente e obra */}
           <Card>
@@ -336,7 +336,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
           {showVolume && (
             <Card>
               <CardHeader step={2} title="Calculadora de volume" subtitle="Calcule cada elemento pela fórmula correspondente, em m³, ou informe o volume passado pelo cliente." action={<Calculator className="h-6 w-6 text-brand" />} />
-              <div className="p-5">
+              <div className="p-3 sm:p-5">
                 <MeasureCalculator kind="volume" elements={draft.volumeElements} margin={draft.volumeMargin} summary={volume} onChange={(v) => set('volumeElements', v)} onMargin={(v) => set('volumeMargin', v)} />
               </div>
             </Card>
@@ -344,7 +344,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
           {showArea && (
             <Card>
               <CardHeader step={showVolume ? 3 : 2} title="Calculadora de área de piso" subtitle="Polido ou sarrafeado: some ambientes, ou informe a área." action={<Ruler className="h-6 w-6 text-brand" />} />
-              <div className="p-5">
+              <div className="p-3 sm:p-5">
                 <MeasureCalculator kind="area" elements={draft.areaElements} margin={draft.areaMargin} summary={area} onChange={(v) => set('areaElements', v)} onMargin={(v) => set('areaMargin', v)} />
               </div>
             </Card>
@@ -353,7 +353,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
           {/* Itens */}
           <Card>
             <CardHeader step={draft.type === 'combinado' ? 4 : 3} title="Produtos e serviços" subtitle="Quantidades podem vir da calculadora. Preço vazio usa o catálogo." />
-            <div className="p-5">
+            <div className="p-3 sm:p-5">
               <div className="hidden grid-cols-[minmax(0,2.2fr)_1.4fr_1.1fr_0.7fr_1fr_auto] gap-3 border-b border-line pb-2 text-xs font-bold uppercase tracking-wide text-muted md:grid">
                 <span>Item</span>
                 <span>Quantidade</span>
