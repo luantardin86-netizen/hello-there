@@ -31,6 +31,7 @@ import { addDays, daysBetween } from '../lib/format'
 import { funnelStages, type QuoteStatus, type StageId } from './settings'
 
 const STORAGE_KEY = 'qmx-crm-flow-v2'
+const WEBSITE_LEAD_SEEN_KEY = 'qmx-website-leads-seen-v1'
 
 /** Uma única etapa inicia a criação automática do rascunho. */
 const stageToQuoteStatus: Partial<Record<StageId, QuoteStatus>> = {
@@ -507,6 +508,112 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dismissToast,
     }
   }, [demoMode, clientRecords, siteRecords, opps, quoteRecords, toasts, toast, dismissToast, setDemoMode])
+
+
+  // Busca os POSTs recebidos pelo servidor e os importa para o funil.
+  // addClient persiste cliente e oportunidade no localStorage usado pelo CRM.
+  useEffect(() => {
+    if (!ready) return;
+
+    let active = true;
+    let requesting = false;
+
+    const syncWebsiteLeads = async () => {
+      if (requesting || !active) return;
+      requesting = true;
+
+      try {
+        const response = await fetch('/api/webhooks/leads/pending', {
+          method: 'GET',
+          cache: 'no-store',
+          headers: { Accept: 'application/json' },
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const payload = (await response.json()) as { leads?: unknown };
+        if (!Array.isArray(payload.leads)) return;
+
+        let seen: string[] = [];
+        try {
+          const saved = localStorage.getItem(WEBSITE_LEAD_SEEN_KEY);
+          if (saved) {
+            const parsed: unknown = JSON.parse(saved);
+            if (Array.isArray(parsed)) seen = parsed.filter((item): item is string => typeof item === 'string');
+          }
+        } catch {
+          // Um marcador corrompido não impede receber leads; addClient também deduplica por telefone.
+        }
+
+        const seenIds = new Set(seen);
+        let imported = 0;
+
+        for (const item of payload.leads) {
+          if (!item || typeof item !== 'object') continue;
+          const event = item as {
+            id?: unknown;
+            nome_cliente?: unknown;
+            numero_cliente?: unknown;
+            receivedAt?: unknown;
+          };
+          const id = typeof event.id === 'string' ? event.id : '';
+          const name = typeof event.nome_cliente === 'string' ? event.nome_cliente.trim() : '';
+          const phone = typeof event.numero_cliente === 'string' ? event.numero_cliente.trim() : '';
+          if (!id || seenIds.has(id) || !name || !phone) continue;
+
+          const receivedAt = typeof event.receivedAt === 'string'
+            ? event.receivedAt
+            : new Date().toISOString();
+
+          value.addClient({
+            id: `web-${id}`,
+            name,
+            tradeName: '',
+            document: '',
+            phone,
+            whatsapp: phone,
+            email: '',
+            address: '',
+            city: '',
+            region: '',
+            type: 'Outro',
+            source: 'Vindo Site',
+            ownerId: 'u-adm',
+            notes: 'Lead recebido automaticamente via POST da landing page.',
+            createdAt: receivedAt.slice(0, 10),
+            active: true,
+            demo: false,
+          });
+
+          seenIds.add(id);
+          imported += 1;
+          console.info('[CRM] Lead importado para o funil — etapa 1. Novo lead:', {
+            id,
+            nome_cliente: name,
+            numero_cliente: phone,
+          });
+        }
+
+        if (imported > 0) {
+          localStorage.setItem(
+            WEBSITE_LEAD_SEEN_KEY,
+            JSON.stringify(Array.from(seenIds).slice(-500)),
+          );
+        }
+      } catch (error) {
+        console.error('[CRM] Falha ao sincronizar leads recebidos via POST:', error);
+      } finally {
+        requesting = false;
+      }
+    };
+
+    void syncWebsiteLeads();
+    const interval = window.setInterval(() => void syncWebsiteLeads(), 3000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [ready, value.addClient]);
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }
