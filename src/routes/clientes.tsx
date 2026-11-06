@@ -212,12 +212,12 @@ function ClientForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     const site: Site | undefined = f.siteName.trim()
       ? { id: newId(), clientId: id, name: f.siteName.trim(), address: f.siteAddress.trim(), city: f.city.trim(), region: f.region, contactName: f.siteContact.trim(), contactPhone: onlyDigits(f.sitePhone), serviceType: '', accessNotes: '', restrictions: f.siteRestrictions.trim(), demo: false }
       : undefined
-    addClient(client, site)
-    toast({ tone: 'ok', title: 'Cliente cadastrado', body: 'Disponível para orçamentos nesta sessão do navegador.' })
+    const persistedId = addClient(client, site)
+    toast({ tone: 'ok', title: persistedId === id ? 'Cliente cadastrado' : 'Contato existente atualizado', body: 'As informações foram salvas no CRM e o lead foi sincronizado.' })
     setF(emptyForm)
     setTried(false)
     onClose()
-    onCreated(id)
+    onCreated(persistedId)
   }
 
   return (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, createFileRoute } from '@tanstack/react-router'
-import { Copy, Eye, FileText, MessageCircle, Plus, Search } from 'lucide-react'
+import { Copy, Eye, FileText, MessageCircle, Pencil, Plus, Search } from 'lucide-react'
 import { useStore } from '../data/store'
 import { paymentMethods, quoteStatuses } from '../data/settings'
 import { today, userName } from '../data/fixtures'
@@ -153,6 +153,9 @@ function Orcamentos() {
                         <div className="flex justify-end gap-1">
                           <IconBtn label="Ver proposta" onClick={() => setPreview(p)}><Eye className="h-4 w-4" /></IconBtn>
                           <IconBtn label="Compartilhar no WhatsApp" onClick={() => setWa(p)}><MessageCircle className="h-4 w-4" /></IconBtn>
+                          <Link to="/orcamentos/novo" search={{ editar: x.id }} title="Editar orçamento" aria-label="Editar orçamento" className="grid h-8 w-8 place-items-center rounded-md text-ink-2 hover:bg-surface-2">
+                            <Pencil className="h-4 w-4" />
+                          </Link>
                           <Link to="/orcamentos/novo" search={{ origem: x.id }} title="Duplicar com preços atuais" aria-label="Duplicar com preços atuais" className="grid h-8 w-8 place-items-center rounded-md text-ink-2 hover:bg-surface-2">
                             <Copy className="h-4 w-4" />
                           </Link>

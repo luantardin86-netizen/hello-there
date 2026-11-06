@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate } from '@tanstack/react-router'
 import {
   Building2,
   Calculator,
@@ -25,10 +25,10 @@ import {
   type QuoteExtras,
   type QuoteLine,
 } from '../lib/quote'
-import { addDays, brl, brlCents, dateBR, num, parseDecimal } from '../lib/format'
+import { addDays, brl, brlCents, dateBR, daysBetween, num, parseDecimal } from '../lib/format'
 import { formatPhone } from '../lib/documents'
 import { useStore } from '../data/store'
-import { catalog, categoryLabel, paymentMethods } from '../data/settings'
+import { catalog, categoryLabel, paymentMethods, quoteStatuses, type QuoteStatus } from '../data/settings'
 import { currentUser, today, userName, type QuoteRecord, type QuoteType } from '../data/fixtures'
 import { MeasureCalculator, blankElement, newId } from './MeasureCalculator'
 import { ProposalModal, WhatsAppDialog } from './QuoteShare'
@@ -55,6 +55,12 @@ export interface Draft {
 }
 
 const DRAFT_KEY = 'qmx-orcamento-rascunho-v1'
+
+function makeQuoteId() {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? `quote-${crypto.randomUUID()}`
+    : `quote-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
 
 function makeLine(catalogId: string | null, quantityMode: QuoteLine['quantityMode'] = 'manual'): QuoteLine {
   const c = catalog.find((x) => x.id === catalogId)
@@ -101,66 +107,110 @@ function emptyDraft(validityDays: number | null): Draft {
   }
 }
 
-function fromRecord(q: QuoteRecord, validityDays: number | null): Draft {
+function fromRecord(q: QuoteRecord, validityDays: number | null, copy = false): Draft {
+  const remaining = q.validUntil ? daysBetween(today, q.validUntil) : null
   return {
     type: q.type,
     clientId: q.clientId,
     siteId: q.siteId,
     ownerId: q.ownerId,
-    volumeElements: q.volumeElements.map((e) => ({ ...e, id: newId() })),
+    volumeElements: q.volumeElements.map((e) => ({ ...e, id: copy ? newId() : e.id })),
     volumeMargin: q.volumeMargin,
-    areaElements: q.areaElements.map((e) => ({ ...e, id: newId() })),
+    areaElements: q.areaElements.map((e) => ({ ...e, id: copy ? newId() : e.id })),
     areaMargin: q.areaMargin,
-    // Preços manuais não são herdados: a cópia usa as condições atuais do catálogo
-    lines: q.lines.map((l) => ({ ...l, id: newId(), unitPriceInput: '' })),
+    // Em edição preserva todos os preços e identificadores. Em cópia, cria itens novos e limpa preços manuais.
+    lines: q.lines.map((l) => ({ ...l, id: copy ? newId() : l.id, unitPriceInput: copy ? '' : l.unitPriceInput })),
     extras: structuredClone(q.extras),
     paymentMethodIds: [...q.paymentMethodIds],
     paymentTerms: q.paymentTerms,
-    validityDays: validityDays?.toString() ?? '',
+    validityDays: copy
+      ? validityDays?.toString() ?? ''
+      : remaining !== null && remaining > 0 ? String(remaining) : '',
     executionDeadline: q.executionDeadline,
     notes: q.notes,
-    origin: q.number,
+    origin: copy ? q.number : null,
   }
 }
 
-export function QuoteBuilder({ origin }: { origin?: string }) {
-  const { clients, sites, quotes, ctx, demoMode, toast } = useStore()
+export function QuoteBuilder({ origin, editId }: { origin?: string; editId?: string }) {
+  const { clients, sites, quotes, ctx, demoMode, toast, saveQuote, ready } = useStore()
+  const navigate = useNavigate()
+  const editingRecord = editId ? quotes.find((q) => q.id === editId) : undefined
   const [draft, setDraft] = useState<Draft>(() => emptyDraft(ctx.rules.validityDays))
+  const [recordStatus, setRecordStatus] = useState<QuoteStatus>('Rascunho')
+  const [savedQuoteId, setSavedQuoteId] = useState(editId ?? '')
   const [loaded, setLoaded] = useState(false)
   const [savedAt, setSavedAt] = useState<string | null>(null)
   const [showProposal, setShowProposal] = useState(false)
   const [showWa, setShowWa] = useState(false)
+  const draftKey = editId
+    ? `${DRAFT_KEY}:edit:${editId}`
+    : origin ? `${DRAFT_KEY}:copy:${origin}` : DRAFT_KEY
 
-  // Carrega duplicação ou rascunho guardado neste navegador
+  // Editar carrega o mesmo registro; duplicar cria uma cópia independente.
   useEffect(() => {
-    const src = origin ? quotes.find((q) => q.id === origin) : undefined
+    if (!ready) return
+    const src = editId ? quotes.find((q) => q.id === editId) : origin ? quotes.find((q) => q.id === origin) : undefined
     if (src) {
-      setDraft(fromRecord(src, ctx.rules.validityDays))
-      toast({ tone: 'info', title: `Cópia de ${src.number}`, body: 'Os preços foram atualizados para as condições atuais do catálogo. Revise antes de gerar a proposta.' })
+      const isCopy = !editId
+      const baseDraft = fromRecord(src, ctx.rules.validityDays, isCopy)
+      let restoredLocal = false
+      try {
+        const raw = localStorage.getItem(draftKey)
+        if (raw) {
+          const local = JSON.parse(raw) as { draft?: Draft; status?: QuoteStatus }
+          if (local.draft) {
+            setDraft({ ...baseDraft, ...local.draft })
+            setRecordStatus(local.status ?? (isCopy ? 'Rascunho' : src.status))
+            restoredLocal = true
+          } else {
+            setDraft(baseDraft)
+            setRecordStatus(isCopy ? 'Rascunho' : src.status)
+          }
+        } else {
+          setDraft(baseDraft)
+          setRecordStatus(isCopy ? 'Rascunho' : src.status)
+        }
+      } catch {
+        localStorage.removeItem(draftKey)
+        setDraft(baseDraft)
+        setRecordStatus(isCopy ? 'Rascunho' : src.status)
+      }
+      setSavedQuoteId(isCopy ? '' : src.id)
+      if (restoredLocal) {
+        toast({ tone: 'info', title: 'Alterações recuperadas', body: 'O formulário foi restaurado do último autosalvamento local.' })
+      } else if (isCopy) {
+        toast({ tone: 'info', title: `Cópia de ${src.number}`, body: 'A cópia é independente. Revise os preços e salve como um novo orçamento.' })
+      } else {
+        toast({ tone: 'info', title: `Editando ${src.number}`, body: 'As alterações serão gravadas no próprio orçamento.' })
+      }
     } else {
       try {
-        const raw = localStorage.getItem(DRAFT_KEY)
+        const raw = localStorage.getItem(draftKey)
         if (raw) {
-          setDraft({ ...emptyDraft(ctx.rules.validityDays), ...(JSON.parse(raw) as Draft) })
+          const local = JSON.parse(raw) as { draft?: Draft; status?: QuoteStatus }
+          setDraft({ ...emptyDraft(ctx.rules.validityDays), ...(local.draft ?? local as Draft) })
+          setRecordStatus(local.status ?? 'Rascunho')
           toast({ tone: 'info', title: 'Rascunho recuperado', body: 'Continuamos de onde você parou.' })
         }
       } catch {
-        localStorage.removeItem(DRAFT_KEY)
+        localStorage.removeItem(draftKey)
       }
+      if (editId) toast({ tone: 'erro', title: 'Orçamento não encontrado', body: 'O registro pode ter sido removido ou estar fora da visualização atual.' })
     }
     setLoaded(true)
-  }, [origin]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editId, origin, ready]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Autosalvamento local (prevenção de perda de dados)
+  // Autosalvamento local por orçamento, sem misturar formulários diferentes.
   useEffect(() => {
     if (!loaded) return
     const t = setTimeout(() => {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft))
+      localStorage.setItem(draftKey, JSON.stringify({ draft, status: recordStatus }))
       const d = new Date()
       setSavedAt(`${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`)
     }, 500)
     return () => clearTimeout(t)
-  }, [draft, loaded])
+  }, [draft, recordStatus, loaded, draftKey])
 
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setDraft((d) => ({ ...d, [k]: v }))
   const setExtras = (p: Partial<QuoteExtras>) => setDraft((d) => ({ ...d, extras: { ...d.extras, ...p } }))
@@ -194,12 +244,12 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
   const nextNumber = useMemo(() => {
     const year = today.slice(0, 4)
     const max = quotes.reduce((m, q) => Math.max(m, Number(q.number.split('-')[2]) || 0), 0)
-    return `ORC-${year}-${String(max + 1).padStart(4, '0')}`
-  }, [quotes])
+    return editingRecord?.number ?? `ORC-${year}-${String(max + 1).padStart(4, '0')}`
+  }, [quotes, editingRecord?.number]
 
   const proposal: ProposalData = {
-    number: nextNumber,
-    version: 1,
+    number: editingRecord?.number ?? nextNumber,
+    version: editingRecord?.version ?? 1,
     issueDate: today,
     validUntil,
     client,
@@ -231,10 +281,62 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
   }
 
   const discard = () => {
-    if (!confirm('Descartar este rascunho? Os dados preenchidos serão apagados.')) return
-    localStorage.removeItem(DRAFT_KEY)
-    setDraft(emptyDraft(ctx.rules.validityDays))
-    toast({ tone: 'ok', title: 'Rascunho descartado' })
+    if (!confirm('Descartar as alterações locais deste formulário? O orçamento já salvo não será apagado.')) return
+    localStorage.removeItem(draftKey)
+    if (editingRecord) {
+      setDraft(fromRecord(editingRecord, ctx.rules.validityDays, false))
+      setRecordStatus(editingRecord.status)
+    } else {
+      setDraft(emptyDraft(ctx.rules.validityDays))
+      setRecordStatus('Rascunho')
+    }
+    toast({ tone: 'ok', title: 'Alterações locais descartadas' })
+  }
+
+  const saveDraft = () => {
+    if (!draft.clientId) {
+      toast({ tone: 'erro', title: 'Selecione um cliente', body: 'O orçamento precisa estar vinculado a um cliente para ser salvo.' })
+      return
+    }
+    const commercialStatusChanged = !editingRecord || editingRecord.status !== recordStatus
+    if (commercialStatusChanged && ['Enviado ao cliente', 'Em negociação', 'Aceito'].includes(recordStatus) && !canIssue) {
+      toast({ tone: 'erro', title: 'Orçamento com pendências', body: 'Resolva os bloqueios e as aprovações antes de avançar o status comercial.' })
+      return
+    }
+
+    const id = editingRecord?.id ?? (savedQuoteId || makeQuoteId())
+    const number = editingRecord?.number ?? nextNumber
+    const record: QuoteRecord = {
+      id,
+      number,
+      version: editingRecord ? editingRecord.version + 1 : 1,
+      createdAt: editingRecord?.createdAt ?? today,
+      validUntil: validUntil ?? editingRecord?.validUntil ?? '',
+      sentAt: recordStatus === 'Rascunho' || recordStatus === 'Aguardando informações' ? null : editingRecord?.sentAt ?? today,
+      status: recordStatus,
+      type: draft.type,
+      clientId: draft.clientId,
+      siteId: draft.siteId,
+      ownerId: draft.ownerId,
+      volumeElements: draft.volumeElements,
+      volumeMargin: draft.volumeMargin,
+      areaElements: draft.areaElements,
+      areaMargin: draft.areaMargin,
+      lines: draft.lines,
+      extras: draft.extras,
+      paymentMethodIds: draft.paymentMethodIds,
+      paymentTerms: draft.paymentTerms,
+      executionDeadline: draft.executionDeadline,
+      notes: draft.notes,
+      opportunityId: editingRecord?.opportunityId,
+      demo: editingRecord?.demo ?? false,
+    }
+
+    const persistedId = saveQuote(record)
+    setSavedQuoteId(persistedId)
+    localStorage.removeItem(draftKey)
+    toast({ tone: 'ok', title: editingRecord ? 'Orçamento atualizado' : 'Rascunho salvo', body: `${number} foi gravado no CRM.` })
+    navigate({ to: '/orcamentos/novo', search: { editar: persistedId }, replace: true })
   }
 
   const r = ctx.rules
@@ -245,12 +347,15 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
     <>
       <PageHeader
         eyebrow="Orçamentos"
-        title="Novo orçamento"
-        description={draft.origin ? <>Cópia do orçamento <strong className="text-ink">{draft.origin}</strong> com preços atualizados.</> : 'Calcule volume e área, monte os itens e gere a proposta comercial.'}
+        title={editId ? 'Editar orçamento' : 'Novo orçamento'}
+        description={editId ? <>Editando <strong className="text-ink">{editingRecord?.number}</strong>. As alterações serão gravadas neste orçamento.</> : draft.origin ? <>Cópia de <strong className="text-ink">{draft.origin}</strong>. Salve para criar um orçamento independente.</> : 'Calcule volume e área, monte os itens e gere a proposta comercial.'}
         actions={
           <>
             <Button variant="ghost" onClick={discard}>
-              <Undo2 className="h-4 w-4" /> Descartar
+              <Undo2 className="h-4 w-4" /> Descartar alterações locais
+            </Button>
+            <Button variant="primary" onClick={saveDraft}>
+              <FileText className="h-4 w-4" /> {editId ? 'Salvar alterações' : 'Salvar rascunho'}
             </Button>
             <Link to="/orcamentos" className="inline-flex h-10 items-center rounded-md border border-line bg-surface px-4 font-semibold hover:bg-surface-2">
               Ver orçamentos
@@ -534,6 +639,9 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
           <Card>
             <CardHeader step={draft.type === 'combinado' ? 6 : 5} title="Condições comerciais" />
             <div className="grid gap-4 p-5 md:grid-cols-2">
+              <Field label="Status do orçamento">
+                {(id) => <select id={id} className={inputCls()} value={recordStatus} onChange={(e) => setRecordStatus(e.target.value as QuoteStatus)}>{quoteStatuses.map((status) => <option key={status}>{status}</option>)}</select>}
+              </Field>
               <div className="md:col-span-2">
                 <p className="mb-2 text-[13px] font-semibold text-ink-2">Formas de pagamento</p>
                 <div className="flex flex-wrap gap-2">
@@ -579,10 +687,10 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
               <div className="bg-ink px-5 py-4 text-bg">
                 <div className="flex items-center justify-between">
                   <span className="font-display text-sm font-bold uppercase tracking-[0.2em] text-bg/60">Resumo</span>
-                  <Badge tone="neutral">Rascunho</Badge>
+                  <Badge tone={recordStatus === 'Aceito' ? 'ok' : recordStatus === 'Recusado' ? 'red' : 'neutral'}>{recordStatus}</Badge>
                 </div>
-                <p className="font-display mt-1 text-2xl font-extrabold tabular">{nextNumber} <span className="text-base font-semibold text-bg/60">· v1</span></p>
-                <p className="text-xs text-bg/60">Número provisório, confirmado ao registrar o orçamento.</p>
+                <p className="font-display mt-1 text-2xl font-extrabold tabular">{editingRecord?.number ?? nextNumber} <span className="text-base font-semibold text-bg/60">· v{editingRecord?.version ?? 1}</span></p>
+                <p className="text-xs text-bg/60">{editId ? 'Identificador permanente do orçamento.' : 'Número confirmado ao salvar o rascunho.'}</p>
               </div>
               <div className="space-y-1 p-5 text-sm">
                 {result.concreteVolume > 0 && <SumRow k="Concreto" v={`${num(result.concreteVolume, 2)} m³`} />}
@@ -607,6 +715,9 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
                 </div>
               </div>
               <div className="space-y-2 border-t border-line p-5">
+                <Button variant="primary" className="w-full" onClick={saveDraft}>
+                  <FileText className="h-4 w-4" /> {editId ? 'Salvar alterações' : 'Salvar rascunho'}
+                </Button>
                 <Button variant={canIssue ? 'primary' : 'secondary'} className="w-full" onClick={() => setShowProposal(true)}>
                   {canIssue ? <FileText className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   {canIssue ? 'Gerar proposta em PDF' : 'Pré-visualizar proposta'}
@@ -619,7 +730,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
                     {blockers.length ? 'Proposta definitiva bloqueada até resolver as pendências abaixo.' : 'Proposta definitiva liberada após aprovação interna.'}
                   </p>
                 )}
-                <p className="pt-1 text-center text-[11px] text-muted">{savedAt ? `Rascunho guardado neste navegador às ${savedAt}` : 'Rascunho guardado automaticamente neste navegador'}</p>
+                <p className="pt-1 text-center text-[11px] text-muted">{savedAt ? `Alterações locais guardadas às ${savedAt}` : 'Salve para registrar as alterações no CRM.'}</p>
               </div>
             </Card>
 
