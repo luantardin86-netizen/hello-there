@@ -214,6 +214,8 @@ export interface Opportunity {
   lossReason: string | null
   quoteId: string | null
   history: { at: string; by: string; text: string }[]
+  /** Relatórios de atendimento: necessidades do cliente e observações. */
+  reports?: { at: string; by: string; text: string }[]
   demo: boolean
 }
 
