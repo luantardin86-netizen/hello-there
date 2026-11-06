@@ -13,10 +13,9 @@ import type { SupabaseConnectionResult } from './types'
  */
 export async function testSupabaseConnection(): Promise<SupabaseConnectionResult> {
   const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
-  const url = configuredUrl ? new URL(configuredUrl).origin : undefined
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
 
-  if (!url || !publishableKey) {
+  if (!configuredUrl || !publishableKey) {
     return {
       ok: false,
       message: 'Defina VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY no arquivo .env e reinicie o servidor.',
@@ -24,7 +23,8 @@ export async function testSupabaseConnection(): Promise<SupabaseConnectionResult
   }
 
   try {
-    const response = await fetch(`${url}/auth/v1/settings`, {
+    const url = new URL(configuredUrl)
+    const response = await fetch(`${url.origin}/auth/v1/settings`, {
       method: 'GET',
       headers: {
         apikey: publishableKey,
