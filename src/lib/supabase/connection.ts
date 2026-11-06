@@ -12,7 +12,8 @@ import type { SupabaseConnectionResult } from './types'
  * Esse teste NÃO substitui uma consulta real à Data API/PostgreSQL.
  */
 export async function testSupabaseConnection(): Promise<SupabaseConnectionResult> {
-  const url = import.meta.env.VITE_SUPABASE_URL?.trim().replace(/\\/+$/, '')
+  const configuredUrl = import.meta.env.VITE_SUPABASE_URL?.trim()
+  const url = configuredUrl ? new URL(configuredUrl).origin : undefined
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY?.trim()
 
   if (!url || !publishableKey) {
