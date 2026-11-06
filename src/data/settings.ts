@@ -97,6 +97,7 @@ export const company = {
 }
 
 export const leadSources = [
+  'Vindo Site',
   'WhatsApp 1',
   'WhatsApp 2',
   'Instagram',

@@ -183,7 +183,6 @@ function ClientForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     if (!f.sameWa && f.whatsapp && ![10, 11].includes(onlyDigits(f.whatsapp).length)) e.whatsapp = 'WhatsApp com DDD'
     if (f.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)) e.email = 'E-mail inválido'
     if (!f.region) e.region = 'Selecione a região de atendimento'
-    if (!f.source) e.source = 'Selecione a origem do lead'
     if (f.siteName && f.siteName.trim().length < 3) e.siteName = 'Nome da obra muito curto'
     if (f.siteName && !f.siteAddress.trim()) e.siteAddress = 'Informe o endereço da obra'
     return e
@@ -208,7 +207,7 @@ function ClientForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
     }
     const id = newId()
     const client: Client = {
-      id, name: f.name.trim(), tradeName: f.tradeName.trim(), document: docDigits, phone: phoneDigits, whatsapp: f.sameWa ? phoneDigits : onlyDigits(f.whatsapp), email: f.email.trim(), address: f.address.trim(), city: f.city.trim(), region: f.region, type: f.type, source: f.source, ownerId: f.ownerId, notes: f.notes.trim(), createdAt: today, active: true, demo: false,
+      id, name: f.name.trim(), tradeName: f.tradeName.trim(), document: docDigits, phone: phoneDigits, whatsapp: f.sameWa ? phoneDigits : onlyDigits(f.whatsapp), email: f.email.trim(), address: f.address.trim(), city: f.city.trim(), region: f.region, type: f.type, source: f.source || 'Outros', ownerId: f.ownerId, notes: f.notes.trim(), createdAt: today, active: true, demo: false,
     }
     const site: Site | undefined = f.siteName.trim()
       ? { id: newId(), clientId: id, name: f.siteName.trim(), address: f.siteAddress.trim(), city: f.city.trim(), region: f.region, contactName: f.siteContact.trim(), contactPhone: onlyDigits(f.sitePhone), serviceType: '', accessNotes: '', restrictions: f.siteRestrictions.trim(), demo: false }
@@ -252,7 +251,7 @@ function ClientForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
             )}
           </div>
           <Field label="E-mail" error={liveErrors.email}>{(id) => <input id={id} type="email" className={inputCls(!!liveErrors.email)} value={f.email} onChange={(e) => up('email', e.target.value)} />}</Field>
-          <Field label="Origem do lead" required error={liveErrors.source}>
+          <Field label="Origem do lead" error={liveErrors.source} hint="Opcional. Leads da integração com o site entram como “Vindo Site” automaticamente.">
             {(id) => (
               <select id={id} className={inputCls(!!liveErrors.source)} value={f.source} onChange={(e) => up('source', e.target.value)}>
                 <option value="">Selecione…</option>
@@ -280,17 +279,6 @@ function ClientForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
           <Field label="Observações" className="sm:col-span-2">{(id) => <textarea id={id} rows={2} className={cx(inputCls(), 'h-auto py-2')} value={f.notes} onChange={(e) => up('notes', e.target.value)} />}</Field>
         </div>
 
-        <div className="rounded-lg border border-dashed border-line p-4">
-          <h3 className="mb-1 flex items-center gap-2 text-lg font-bold uppercase"><Building2 className="h-5 w-5 text-brand" /> Primeira obra (opcional)</h3>
-          <p className="mb-4 text-sm text-muted">Já cadastre a obra para orçar em seguida.</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Nome ou identificação da obra" error={liveErrors.siteName} className="sm:col-span-2">{(id) => <input id={id} className={inputCls(!!liveErrors.siteName)} value={f.siteName} onChange={(e) => up('siteName', e.target.value)} />}</Field>
-            <Field label="Endereço da obra" error={liveErrors.siteAddress} className="sm:col-span-2">{(id) => <input id={id} className={inputCls(!!liveErrors.siteAddress)} value={f.siteAddress} onChange={(e) => up('siteAddress', e.target.value)} />}</Field>
-            <Field label="Contato na obra">{(id) => <input id={id} className={inputCls()} value={f.siteContact} onChange={(e) => up('siteContact', e.target.value)} />}</Field>
-            <Field label="Telefone do contato">{(id) => <input id={id} inputMode="tel" className={inputCls()} value={f.sitePhone} onChange={(e) => up('sitePhone', e.target.value)} />}</Field>
-            <Field label="Restrições de acesso e descarga" className="sm:col-span-2">{(id) => <input id={id} className={inputCls()} value={f.siteRestrictions} placeholder="Ex.: descarga até 16h, rua estreita" onChange={(e) => up('siteRestrictions', e.target.value)} />}</Field>
-          </div>
-        </div>
       </div>
     </Drawer>
   )
