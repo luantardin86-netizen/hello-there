@@ -59,11 +59,11 @@ function Configuracoes() {
       <Card className="mb-6">
         <CardHeader
           title="Conexão com Supabase"
-          subtitle="Cliente centralizado usando a Data API, sem conexão PostgreSQL direta no navegador."
+          subtitle="Cliente centralizado para usar a API do Supabase, sem conexão PostgreSQL direta no navegador."
           action={
             <Badge tone={connectionStatus === 'connected' ? 'ok' : apiConfigured ? 'info' : 'warn'}>
               {connectionStatus === 'connected'
-                ? 'API acessível'
+                ? 'Projeto alcançável'
                 : connectionStatus === 'checking'
                   ? 'Testando'
                   : connectionStatus === 'error'
@@ -81,8 +81,8 @@ function Configuracoes() {
               O cliente fica em um único módulo para ser reutilizado pelos serviços do sistema.
             </p>
             <p>
-              O teste consulta a descrição da API e não exige tabelas. Ele não cria, altera ou apaga dados.
-              Antes de armazenar dados reais, ainda será necessário configurar autenticação, permissões e políticas RLS.
+              O teste verifica se o Supabase aceita a URL e a publishable key, sem exigir tabelas. Ele não cria, altera ou apaga dados e ainda não comprova consultas ao PostgreSQL.
+              Antes de armazenar dados reais, será necessário configurar autenticação, permissões e políticas RLS.
             </p>
             {connectionMessage && (
               <p role="status" aria-live="polite" className={connectionStatus === 'connected' ? 'font-medium text-ok' : 'font-medium text-brand'}>
