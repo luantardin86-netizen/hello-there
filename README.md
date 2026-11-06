@@ -40,7 +40,7 @@ bun run dev
 
 Se você usa npm, execute `npm install` e `npm run dev` no lugar dos comandos Bun.
 
-Na tela **Configurações**, use **Testar conexão** no cartão “Conexão com Supabase”. O teste consulta a descrição OpenAPI da Data API e não depende de nenhuma tabela criada.
+Na tela **Configurações**, use **Testar conexão** no cartão “Conexão com Supabase”. O teste verifica a URL e a publishable key pelo endpoint público de configurações do Supabase Auth, sem depender de tabelas. Ele confirma que o projeto aceita a chave, mas não comprova ainda consultas à Data API/PostgreSQL.
 
 ### Variáveis e segurança
 
