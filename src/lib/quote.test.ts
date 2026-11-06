@@ -84,6 +84,40 @@ describe('calculadora de volume', () => {
     expect(computeElement(el({ mode: 'informado', informed: '7,5' }), 'volume').value).toBe(7.5)
   })
 
+  it('calcula viga, sapata e baldrame por metro linear × largura × espessura', () => {
+    for (const elementType of ['Viga', 'Sapata', 'Baldrame', 'Viga baldrame']) {
+      const r = computeElement(el({ elementType, length: '10', width: '0,2', thicknessCm: '30' }), 'volume')
+      expect(r.value).toBeCloseTo(0.6, 10)
+    }
+  })
+
+  it('calcula pilar por largura × espessura × altura', () => {
+    const r = computeElement(el({ elementType: 'Pilar', length: '3', width: '0,3', thicknessCm: '30' }), 'volume')
+    expect(r.value).toBeCloseTo(0.27, 10)
+  })
+
+  it('calcula laje H12 usando a espessura nominal selecionada', () => {
+    const r = computeElement(el({ elementType: 'Laje', slabType: 'H12', length: '10', width: '8', thicknessCm: '12' }), 'volume')
+    expect(r.value).toBeCloseTo(9.6, 10)
+  })
+
+  it('calcula radier, contrapiso, piso e calçada como comprimento × largura × espessura', () => {
+    for (const elementType of ['Radier', 'Contrapiso', 'Piso', 'Calçada']) {
+      const r = computeElement(el({ elementType, length: '10', width: '5', thicknessCm: '20' }), 'volume')
+      expect(r.value).toBeCloseTo(10, 10)
+    }
+  })
+
+  it('calcula estacas/tubulões pela fórmula do cilindro e pela quantidade', () => {
+    const r = computeElement(el({ elementType: 'Estacas / tubulão', length: '5', diameterM: '0,4', count: '3' }), 'volume')
+    expect(r.value).toBeCloseTo(Math.PI * (0.4 / 2) ** 2 * 5 * 3, 10)
+  })
+
+  it('usa volume fixo de 1,5, 2 ou 3 m³ por escada e multiplica pela quantidade', () => {
+    const r = computeElement(el({ elementType: 'Escada', stairVolume: '2', count: '2' }), 'volume')
+    expect(r.value).toBe(4)
+  })
+
   it('rejeita medidas negativas, zero, texto e quantidade fracionada', () => {
     expect(computeElement(el({ length: '-2', width: '3', thicknessCm: '10' }), 'volume').error).toMatch(/maior que zero/)
     expect(computeElement(el({ length: '0', width: '3', thicknessCm: '10' }), 'volume').error).toMatch(/maior que zero/)
