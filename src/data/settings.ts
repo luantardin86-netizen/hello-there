@@ -125,6 +125,9 @@ export const elementTypes = [
   'Piso',
   'Calçada',
   'Baldrame',
+  'Viga baldrame',
+  'Escada',
+  'Estacas / tubulão',
   'Outro',
 ]
 

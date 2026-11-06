@@ -335,7 +335,7 @@ export function QuoteBuilder({ origin }: { origin?: string }) {
           {/* 2. Medições */}
           {showVolume && (
             <Card>
-              <CardHeader step={2} title="Calculadora de volume" subtitle="Some lajes, vigas, pilares ou etapas de concretagem. Ou informe o volume passado pelo cliente." action={<Calculator className="h-6 w-6 text-brand" />} />
+              <CardHeader step={2} title="Calculadora de volume" subtitle="Calcule cada elemento pela fórmula correspondente, em m³, ou informe o volume passado pelo cliente." action={<Calculator className="h-6 w-6 text-brand" />} />
               <div className="p-5">
                 <MeasureCalculator kind="volume" elements={draft.volumeElements} margin={draft.volumeMargin} summary={volume} onChange={(v) => set('volumeElements', v)} onMargin={(v) => set('volumeMargin', v)} />
               </div>

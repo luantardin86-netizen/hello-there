@@ -84,6 +84,12 @@ export interface MeasureElement {
   count: string
   informed: string
   notes: string
+  /** Modelo nominal da laje (H8, H10, H12...). */
+  slabType?: string
+  /** Diâmetro das estacas/tubulões, em metros. */
+  diameterM?: string
+  /** Estimativa padrão de escada, em m³ por unidade. */
+  stairVolume?: string
 }
 
 export interface ElementResult {
@@ -101,7 +107,13 @@ function positive(raw: string, label: string, required = true) {
   return { value: p.value }
 }
 
-/** Volume (m³) = comprimento × largura × (espessura cm ÷ 100) × quantidade. Área (m²) = comprimento × largura × quantidade. */
+/**
+ * Calcula áreas em m² e volumes em m³.
+ * No modo volume, cada elemento aplica sua regra:
+ * - Elementos retangulares: comprimento/altura × largura × espessura (cm ÷ 100) × quantidade.
+ * - Estacas/tubulões: π × (diâmetro ÷ 2)² × comprimento × quantidade.
+ * - Escada: volume padrão selecionado (1,5 / 2 / 3 m³) × quantidade.
+ */
 export function computeElement(
   el: MeasureElement,
   kind: MeasureKind,
@@ -112,28 +124,74 @@ export function computeElement(
     if ('missing' in v) return { value: null, error: null, incomplete: true }
     return { value: v.value, error: null, incomplete: false }
   }
-  const L = positive(el.length, 'Comprimento')
-  const W = positive(el.width, 'Largura')
-  const T =
-    kind === 'volume' ? positive(el.thicknessCm, 'Espessura') : { value: 1 }
+
+  const type = el.elementType.trim().toLocaleLowerCase('pt-BR')
   const countRaw = el.count.trim() === '' ? '1' : el.count
   const N = positive(countRaw, 'Quantidade')
-  for (const f of [L, W, T, N])
-    if ('error' in f) return { value: null, error: f.error!, incomplete: false }
-  if ('value' in N && N.value !== null && !Number.isInteger(N.value))
+  if ('error' in N) return { value: null, error: N.error!, incomplete: false }
+  if ('missing' in N) return { value: null, error: null, incomplete: true }
+  const n = (N as { value: number }).value
+  if (!Number.isInteger(n))
     return {
       value: null,
       error: 'Quantidade de elementos deve ser um número inteiro',
       incomplete: false,
     }
-  if ([L, W, T, N].some((f) => 'missing' in f))
+
+  if (kind === 'area') {
+    const L = positive(el.length, 'Comprimento')
+    const W = positive(el.width, 'Largura')
+    for (const f of [L, W])
+      if ('error' in f) return { value: null, error: f.error!, incomplete: false }
+    if ([L, W].some((f) => 'missing' in f))
+      return { value: null, error: null, incomplete: true }
+    return {
+      value: (L as { value: number }).value * (W as { value: number }).value * n,
+      error: null,
+      incomplete: false,
+    }
+  }
+
+  if (type === 'escada') {
+    const preset = positive(el.stairVolume || '1.5', 'Volume padrão da escada')
+    if ('error' in preset)
+      return { value: null, error: preset.error!, incomplete: false }
+    if ('missing' in preset)
+      return { value: null, error: null, incomplete: true }
+    return { value: preset.value * n, error: null, incomplete: false }
+  }
+
+  if (type.startsWith('estacas') || type.startsWith('tubul')) {
+    const length = positive(el.length, 'Comprimento')
+    const diameter = positive(el.diameterM ?? '', 'Espessura / diâmetro')
+    for (const f of [length, diameter])
+      if ('error' in f)
+        return { value: null, error: f.error!, incomplete: false }
+    if ([length, diameter].some((f) => 'missing' in f))
+      return { value: null, error: null, incomplete: true }
+    const l = (length as { value: number }).value
+    const d = (diameter as { value: number }).value
+    return {
+      value: Math.PI * (d / 2) ** 2 * l * n,
+      error: null,
+      incomplete: false,
+    }
+  }
+
+  const isPillar = type === 'pilar'
+  const isLinear = ['viga', 'sapata', 'baldrame', 'viga baldrame'].includes(type)
+  const L = positive(el.length, isPillar ? 'Altura' : isLinear ? 'Metro linear' : 'Comprimento')
+  const W = positive(el.width, 'Largura')
+  const T = positive(el.thicknessCm, 'Espessura')
+  for (const f of [L, W, T])
+    if ('error' in f) return { value: null, error: f.error!, incomplete: false }
+  if ([L, W, T].some((f) => 'missing' in f))
     return { value: null, error: null, incomplete: true }
+
   const l = (L as { value: number }).value
   const w = (W as { value: number }).value
-  const n = (N as { value: number }).value
-  if (kind === 'area') return { value: l * w * n, error: null, incomplete: false }
-  const t = (T as { value: number }).value / 100
-  return { value: l * w * t * n, error: null, incomplete: false }
+  const thicknessM = (T as { value: number }).value / 100
+  return { value: l * w * thicknessM * n, error: null, incomplete: false }
 }
 
 export interface MeasureSummary {
