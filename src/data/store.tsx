@@ -21,29 +21,42 @@ import {
 import {
   buildReceivables,
   evaluateAll,
+  evaluateRecord,
   quoteContext,
   type EvaluatedQuote,
   type ReceivableRow,
 } from './derived'
 import { defaultExtras, type QuoteContext } from '../lib/quote'
-import { addDays } from '../lib/format'
+import { addDays, daysBetween } from '../lib/format'
 import { funnelStages, type QuoteStatus, type StageId } from './settings'
 
-/** Etapa do funil → status do orçamento vinculado (sincronização). */
+const STORAGE_KEY = 'qmx-crm-flow-v2'
+
+/** Uma única etapa inicia a criação automática do rascunho. */
 const stageToQuoteStatus: Partial<Record<StageId, QuoteStatus>> = {
+  novo: 'Rascunho',
+  atendimento: 'Aguardando informações',
+  levantamento: 'Aguardando informações',
   elaboracao: 'Rascunho',
   enviado: 'Enviado ao cliente',
   negociacao: 'Em negociação',
   fechado: 'Aceito',
   perdido: 'Recusado',
 }
-const QUOTE_STAGES: StageId[] = ['elaboracao', 'enviado', 'negociacao', 'fechado']
+
+const quoteStatusToStage: Partial<Record<QuoteStatus, StageId>> = {
+  Rascunho: 'elaboracao',
+  'Aguardando informações': 'elaboracao',
+  'Aguardando aprovação': 'elaboracao',
+  'Aprovado internamente': 'elaboracao',
+  'Enviado ao cliente': 'enviado',
+  'Em negociação': 'negociacao',
+  Aceito: 'fechado',
+  Recusado: 'perdido',
+}
+
 export const stageIndex = (id: StageId) => funnelStages.findIndex((s) => s.id === id)
 
-/**
- * Estado da sessão. Nesta etapa os registros vêm de fixtures e as inclusões
- * ficam na memória do navegador até a etapa de banco de dados (ver PLAN.md).
- */
 export interface Toast {
   id: number
   tone: 'ok' | 'erro' | 'info'
@@ -51,7 +64,45 @@ export interface Toast {
   body?: string
 }
 
+interface PersistedCRM {
+  clients: Client[]
+  sites: Site[]
+  opportunities: Opportunity[]
+  quotes: QuoteRecord[]
+}
+
+function mergeById<T extends { id: string }>(seed: T[], saved: unknown): T[] {
+  if (!Array.isArray(saved)) return seed
+  const savedRows = saved.filter((row): row is T => !!row && typeof row === 'object' && typeof (row as T).id === 'string')
+  const seedById = new Map(seed.map((row) => [row.id, row]))
+  const savedIds = new Set(savedRows.map((row) => row.id))
+  return [
+    ...savedRows.map((row) => ({ ...(seedById.get(row.id) ?? {} as T), ...row }) as T),
+    ...seed.filter((row) => !savedIds.has(row.id)),
+  ]
+}
+
+function makeId(prefix: string) {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto
+    ? prefix + '-' + crypto.randomUUID()
+    : prefix + '-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
+}
+
+function historyEntry(text: string) {
+  return { at: new Date().toISOString(), by: 'u-adm', text }
+}
+
+function nextQuoteNumber(records: QuoteRecord[]) {
+  const year = today.slice(0, 4)
+  const max = records.reduce((current, record) => {
+    const match = record.number.match(/-(\d{4,})$/)
+    return Math.max(current, match ? Number(match[1]) : 0)
+  }, 0)
+  return `ORC-${year}-${String(max + 1).padStart(4, '0')}`
+}
+
 interface Store {
+  ready: boolean
   demoMode: boolean
   setDemoMode: (v: boolean) => void
   ctx: QuoteContext
@@ -60,11 +111,16 @@ interface Store {
   quotes: EvaluatedQuote[]
   opportunities: Opportunity[]
   receivables: ReceivableRow[]
-  addClient: (c: Client, site?: Site) => void
-  /** Muda a etapa e mantém o orçamento vinculado em sincronia (cria rascunho se preciso). */
+  addClient: (c: Client, site?: Site) => string
+  updateClient: (id: string, patch: Partial<Client>) => void
+  updateSite: (id: string, patch: Partial<Site>) => void
+  /** Muda a etapa; ao entrar em elaboração cria/reutiliza exatamente um rascunho. */
   moveOpportunity: (id: string, to: StageId, historyText: string, patch?: Partial<Opportunity>) => string | null
   addReport: (id: string, text: string) => void
+  updateReport: (id: string, reportId: string, text: string) => void
+  deleteReport: (id: string, reportId: string) => void
   updateOpportunity: (id: string, patch: Partial<Opportunity>, historyText?: string) => void
+  saveQuote: (record: QuoteRecord) => string
   toasts: Toast[]
   toast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: number) => void
@@ -74,21 +130,54 @@ const StoreCtx = createContext<Store | null>(null)
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [demoMode, setDemoModeState] = useState(true)
-  const [extraClients, setExtraClients] = useState<Client[]>([])
-  const [extraSites, setExtraSites] = useState<Site[]>([])
+  const [clientRecords, setClientRecords] = useState<Client[]>(seedClients)
+  const [siteRecords, setSiteRecords] = useState<Site[]>(seedSites)
   const [opps, setOpps] = useState<Opportunity[]>(seedOpps)
-  const [extraQuotes, setExtraQuotes] = useState<QuoteRecord[]>([])
-  const [quoteStatus, setQuoteStatus] = useState<Record<string, QuoteStatus>>({})
+  const [quoteRecords, setQuoteRecords] = useState<QuoteRecord[]>(seedQuotes)
+  const [ready, setReady] = useState(false)
   const [toasts, setToasts] = useState<Toast[]>([])
 
   useEffect(() => {
-    const saved = localStorage.getItem('qmx-demo')
-    if (saved === '0') setDemoModeState(false)
+    try {
+      const demo = localStorage.getItem('qmx-demo')
+      if (demo === '0') setDemoModeState(false)
+      const raw = localStorage.getItem(STORAGE_KEY)
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<PersistedCRM>
+        setClientRecords(mergeById(seedClients, saved.clients))
+        setSiteRecords(mergeById(seedSites, saved.sites))
+        setOpps(mergeById(seedOpps, saved.opportunities))
+        setQuoteRecords(mergeById(seedQuotes, saved.quotes))
+      }
+    } catch {
+      // Dados inválidos ou armazenamento bloqueado não impedem abrir o CRM.
+    } finally {
+      setReady(true)
+    }
   }, [])
+
+  useEffect(() => {
+    if (!ready) return
+    try {
+      const data: PersistedCRM = {
+        clients: clientRecords,
+        sites: siteRecords,
+        opportunities: opps,
+        quotes: quoteRecords,
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    } catch {
+      // A aplicação segue funcionando na sessão caso o navegador bloqueie o armazenamento.
+    }
+  }, [ready, clientRecords, siteRecords, opps, quoteRecords])
 
   const setDemoMode = useCallback((v: boolean) => {
     setDemoModeState(v)
-    localStorage.setItem('qmx-demo', v ? '1' : '0')
+    try {
+      localStorage.setItem('qmx-demo', v ? '1' : '0')
+    } catch {
+      // A preferência visual pode permanecer apenas na sessão.
+    }
   }, [])
 
   const toast = useCallback((t: Omit<Toast, 'id'>) => {
@@ -96,6 +185,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setToasts((xs) => [...xs, { ...t, id }])
     setTimeout(() => setToasts((xs) => xs.filter((x) => x.id !== id)), 5000)
   }, [])
+
   const dismissToast = useCallback(
     (id: number) => setToasts((xs) => xs.filter((x) => x.id !== id)),
     [],
@@ -105,125 +195,318 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const ctx = quoteContext(demoMode)
     const keep = <T extends { demo: boolean }>(xs: T[]) =>
       demoMode ? xs : xs.filter((x) => !x.demo)
-    const allRecords = [...extraQuotes, ...keep(seedQuotes as QuoteRecord[])].map((r) =>
-      quoteStatus[r.id] ? { ...r, status: quoteStatus[r.id] } : r,
-    )
-    const quotes = evaluateAll(allRecords, ctx)
-    const allClients = [...extraClients, ...keep(seedClients)]
-    const allSites = [...extraSites, ...keep(seedSites)]
-    const histEntry = (text: string) => ({ at: new Date().toISOString(), by: 'u-adm', text })
+    const visibleQuoteRecords = keep(quoteRecords)
+    const quotes = evaluateAll(visibleQuoteRecords, ctx)
+    const clients = keep(clientRecords)
+    const sites = keep(siteRecords)
+    const opportunities = keep(opps)
+    const receivables = demoMode ? buildReceivables(quotes) : []
+
+    const addClient = (client: Client, site?: Site) => {
+      const digits = (value: string) => value.replace(/\D/g, '')
+      const candidateDocument = digits(client.document)
+      const candidatePhone = digits(client.whatsapp || client.phone)
+      const candidateEmail = client.email.trim().toLocaleLowerCase('pt-BR')
+      const duplicate = clientRecords.find((row) => {
+        if (row.demo !== client.demo) return false
+        const sameDocument = candidateDocument.length >= 11 && digits(row.document) === candidateDocument
+        const samePhone = candidatePhone.length >= 10 && [row.phone, row.whatsapp].some((value) => digits(value) === candidatePhone)
+        const sameEmail = candidateEmail.length > 0 && row.email.trim().toLocaleLowerCase('pt-BR') === candidateEmail
+        return row.id === client.id || sameDocument || samePhone || sameEmail
+      })
+      const persistedClient = duplicate
+        ? { ...duplicate, ...client, id: duplicate.id, demo: duplicate.demo }
+        : client
+      const matchingSite = site ? siteRecords.find((row) =>
+        row.id === site.id ||
+        (row.clientId === persistedClient.id && row.name.trim().toLocaleLowerCase('pt-BR') === site.name.trim().toLocaleLowerCase('pt-BR')),
+      ) : undefined
+      const persistedSite = site ? { ...site, id: matchingSite?.id ?? site.id, clientId: persistedClient.id } : undefined
+
+      setClientRecords((rows) => duplicate
+        ? rows.map((row) => row.id === duplicate.id ? persistedClient : row)
+        : [persistedClient, ...rows],
+      )
+      if (persistedSite) {
+        setSiteRecords((rows) => {
+          const existing = rows.find((row) =>
+            row.id === persistedSite.id ||
+            (row.clientId === persistedClient.id && row.name.trim().toLocaleLowerCase('pt-BR') === persistedSite.name.trim().toLocaleLowerCase('pt-BR')),
+          )
+          return existing
+            ? rows.map((row) => row.id === existing.id ? { ...row, ...persistedSite, id: existing.id } : row)
+            : [persistedSite, ...rows]
+        })
+      }
+
+      // Reenvios da landing/formulário atualizam o contato, mas não duplicam o lead aberto.
+      setOpps((rows) => {
+        const existing = rows.find((row) => row.clientId === persistedClient.id && row.stage !== 'fechado' && row.stage !== 'perdido')
+        if (existing) {
+          return rows.map((row) => row.id === existing.id
+            ? { ...row, siteId: row.siteId ?? persistedSite?.id ?? null }
+            : row,
+          )
+        }
+        return [{
+          id: makeId('op'),
+          title: persistedSite?.name || `Atendimento — ${persistedClient.name}`,
+          clientId: persistedClient.id,
+          siteId: persistedSite?.id ?? null,
+          stage: 'novo',
+          estimatedValue: null,
+          ownerId: persistedClient.ownerId,
+          source: persistedClient.source || 'Outros',
+          enteredAt: today,
+          lastContact: null,
+          nextContact: today,
+          nextAction: 'Primeiro atendimento',
+          lossReason: null,
+          quoteId: null,
+          history: [historyEntry('Lead criado a partir do cadastro de cliente')],
+          reports: [],
+          demo: persistedClient.demo,
+        }, ...rows]
+      })
+      return persistedClient.id
+    }
+
+    const updateClient = (id: string, patch: Partial<Client>) => {
+      setClientRecords((rows) => rows.map((client) => client.id === id ? { ...client, ...patch, id } : client))
+    }
+
+    const updateSite = (id: string, patch: Partial<Site>) => {
+      setSiteRecords((rows) => rows.map((site) => site.id === id ? { ...site, ...patch, id } : site))
+      if (patch.clientId) {
+        setOpps((rows) => rows.map((opportunity) =>
+          opportunity.siteId === id ? { ...opportunity, clientId: patch.clientId!, siteId: id } : opportunity,
+        ))
+      }
+    }
+
+    const moveOpportunity = (
+      id: string,
+      to: StageId,
+      historyText: string,
+      patch: Partial<Opportunity> = {},
+    ): string | null => {
+      const opportunity = opps.find((row) => row.id === id)
+      if (!opportunity) return 'Bloqueado: oportunidade não encontrada.'
+
+      let quoteId = opportunity.quoteId
+      let linkedQuote = quoteRecords.find((record) => record.id === quoteId || record.opportunityId === id)
+      if (opportunity.stage === to && !(to === 'elaboracao' && !linkedQuote)) return null
+      const extra: string[] = []
+
+      if (to === 'elaboracao' && !linkedQuote) {
+        const client = clientRecords.find((row) => row.id === opportunity.clientId)
+        const site = siteRecords.find((row) => row.id === opportunity.siteId)
+        const number = nextQuoteNumber(quoteRecords)
+        quoteId = makeId('quote')
+        const leadInfo = [
+          `Lead: ${client?.name ?? opportunity.title}`,
+          client?.tradeName && `Nome fantasia: ${client.tradeName}`,
+          client?.phone && `Telefone: ${client.phone}`,
+          client?.whatsapp && client.whatsapp !== client.phone && `WhatsApp: ${client.whatsapp}`,
+          client?.email && `E-mail: ${client.email}`,
+          client?.city && `Cidade: ${client.city}`,
+          client?.region && `Região: ${client.region}`,
+          `Origem: ${opportunity.source}`,
+          `Oportunidade: ${opportunity.title}`,
+          ...(opportunity.reports ?? []).map((report) => `Relatório (${report.at.slice(0, 10)}): ${report.text}`),
+        ].filter(Boolean).join('\n')
+
+        const draft: QuoteRecord = {
+          id: quoteId,
+          number,
+          version: 1,
+          createdAt: today,
+          validUntil: addDays(today, 15),
+          sentAt: null,
+          status: 'Rascunho',
+          type: 'concreto',
+          clientId: opportunity.clientId,
+          siteId: site?.id ?? '',
+          ownerId: opportunity.ownerId,
+          volumeElements: [],
+          volumeMargin: '',
+          areaElements: [],
+          areaMargin: '',
+          lines: [],
+          extras: defaultExtras(),
+          paymentMethodIds: [],
+          paymentTerms: '',
+          executionDeadline: '',
+          notes: leadInfo,
+          opportunityId: id,
+          demo: opportunity.demo,
+        }
+        setQuoteRecords((rows) => [draft, ...rows])
+        linkedQuote = draft
+        extra.push(`Rascunho ${number} criado automaticamente`)
+      }
+
+      if (['enviado', 'negociacao', 'fechado'].includes(to) && !linkedQuote) {
+        return 'Bloqueado: passe por "Orçamento em elaboração" e salve o rascunho antes de avançar.'
+      }
+
+      if (to === 'enviado' && linkedQuote) {
+        if (!linkedQuote.validUntil || daysBetween(today, linkedQuote.validUntil) < 0) {
+          return 'Bloqueado: defina uma validade vigente para o orçamento antes do envio.'
+        }
+        const calculated = evaluateRecord(linkedQuote, ctx)
+        if (!calculated.canIssue) {
+          const firstBlocker = calculated.issues.find((issue) => issue.level === 'bloqueio')
+          return `Bloqueado: complete o orçamento antes de enviar. ${firstBlocker?.message ?? 'Há pendências de cálculo.'}`
+        }
+        if (calculated.needsApproval && linkedQuote.status !== 'Aprovado internamente') {
+          return 'Bloqueado: este orçamento exige aprovação interna antes do envio.'
+        }
+      }
+
+      if (to === 'negociacao' && linkedQuote && !['Enviado ao cliente', 'Em negociação'].includes(linkedQuote.status)) {
+        return 'Bloqueado: registre o envio do orçamento antes de iniciar a negociação.'
+      }
+
+      if (to === 'fechado' && linkedQuote && !['Enviado ao cliente', 'Em negociação'].includes(linkedQuote.status)) {
+        return 'Bloqueado: o orçamento precisa estar enviado ou em negociação antes do fechamento.'
+      }
+
+      if (linkedQuote && stageToQuoteStatus[to] && linkedQuote.status !== stageToQuoteStatus[to]) {
+        const nextStatus = stageToQuoteStatus[to]!
+        setQuoteRecords((rows) => rows.map((record) =>
+          record.id === linkedQuote!.id ? { ...record, status: nextStatus } : record,
+        ))
+        extra.push(`Orçamento vinculado atualizado para "${nextStatus}"`)
+      }
+
+      const finalQuoteId = linkedQuote?.id ?? quoteId ?? null
+      setOpps((rows) => rows.map((row) => row.id === id
+        ? {
+            ...row,
+            ...patch,
+            stage: to,
+            quoteId: finalQuoteId,
+            history: [...extra.map(historyEntry), historyEntry(historyText), ...row.history],
+            nextContact: to === 'fechado' || to === 'perdido' ? null : (patch.nextContact ?? row.nextContact),
+          }
+        : row,
+      ))
+      return extra[0] ?? null
+    }
+
+    const updateOpportunity = (id: string, patch: Partial<Opportunity>, historyText?: string) => {
+      const current = opps.find((row) => row.id === id)
+      if (!current) return
+      const { stage, ...fields } = patch
+      if (stage && stage !== current.stage) {
+        const result = moveOpportunity(id, stage, historyText ?? `Etapa alterada: ${current.stage} → ${stage}`, fields)
+        if (result?.startsWith('Bloqueado:')) toast({ tone: 'erro', title: 'Não foi possível mover o lead', body: result.slice('Bloqueado:'.length).trim() })
+        return
+      }
+      setOpps((rows) => rows.map((row) => row.id === id
+        ? {
+            ...row,
+            ...fields,
+            history: historyText ? [historyEntry(historyText), ...row.history] : row.history,
+          }
+        : row,
+      ))
+    }
+
+    const addReport = (id: string, text: string) => {
+      const report = { id: makeId('report'), at: new Date().toISOString(), by: 'u-adm', text }
+      setOpps((rows) => rows.map((row) => row.id === id
+        ? {
+            ...row,
+            reports: [report, ...(row.reports ?? [])],
+            history: [historyEntry('Relatório de atendimento adicionado'), ...row.history],
+          }
+        : row,
+      ))
+    }
+
+    const updateReport = (id: string, reportId: string, text: string) => {
+      setOpps((rows) => rows.map((row) => row.id === id
+        ? {
+            ...row,
+            reports: (row.reports ?? []).map((report) =>
+              (report.id ?? report.at) === reportId ? { ...report, text } : report,
+            ),
+            history: [historyEntry('Relatório de atendimento editado'), ...row.history],
+          }
+        : row,
+      ))
+    }
+
+    const deleteReport = (id: string, reportId: string) => {
+      setOpps((rows) => rows.map((row) => row.id === id
+        ? {
+            ...row,
+            reports: (row.reports ?? []).filter((report) => (report.id ?? report.at) !== reportId),
+            history: [historyEntry('Relatório de atendimento removido'), ...row.history],
+          }
+        : row,
+      ))
+    }
+
+    const saveQuote = (record: QuoteRecord): string => {
+      const previous = quoteRecords.find((row) => row.id === record.id)
+      const numberTaken = quoteRecords.some((row) => row.number === record.number && row.id !== record.id)
+      const merged: QuoteRecord = {
+        ...(previous ?? {} as QuoteRecord),
+        ...record,
+        number: previous?.number ?? (numberTaken ? nextQuoteNumber(quoteRecords) : record.number),
+        opportunityId: record.opportunityId ?? previous?.opportunityId,
+      }
+      setQuoteRecords((rows) => previous
+        ? rows.map((row) => row.id === record.id ? merged : row)
+        : [merged, ...rows],
+      )
+
+      if (merged.opportunityId) {
+        const nextStage = quoteStatusToStage[merged.status]
+        setOpps((rows) => rows.map((row) => row.id === merged.opportunityId
+          ? {
+              ...row,
+              quoteId: merged.id,
+              ...(nextStage && row.stage !== nextStage ? {
+                stage: nextStage,
+                nextContact: nextStage === 'fechado' || nextStage === 'perdido' ? null : row.nextContact,
+                history: [historyEntry(`Etapa sincronizada pelo orçamento: ${nextStage}`), ...row.history],
+              } : {}),
+              ...(!nextStage ? { history: row.history } : {}),
+            }
+          : row,
+        ))
+      }
+      return merged.id
+    }
+
     return {
+      ready,
       demoMode,
       setDemoMode,
       ctx,
-      clients: allClients,
-      sites: allSites,
+      clients,
+      sites,
       quotes,
-      opportunities: keep(opps),
-      receivables: demoMode ? buildReceivables(quotes) : [],
-      addClient: (c, site) => {
-        setExtraClients((xs) => [c, ...xs])
-        if (site) setExtraSites((xs) => [site, ...xs])
-        // Sincronia Clientes → Funil: todo cliente novo entra como "Novo lead".
-        setOpps((xs) => [
-          {
-            id: `op-${Date.now()}`,
-            title: site?.name || `Atendimento — ${c.name}`,
-            clientId: c.id,
-            siteId: site?.id ?? null,
-            stage: 'novo',
-            estimatedValue: null,
-            ownerId: c.ownerId,
-            source: c.source,
-            enteredAt: today,
-            lastContact: null,
-            nextContact: today,
-            nextAction: 'Primeiro atendimento',
-            lossReason: null,
-            quoteId: null,
-            history: [histEntry('Lead criado a partir do cadastro de cliente')],
-            reports: [],
-            demo: false,
-          },
-          ...xs,
-        ])
-      },
-      moveOpportunity: (id, to, historyText, patch = {}) => {
-        const o = opps.find((x) => x.id === id)
-        if (!o) return null
-        let quoteId = o.quoteId
-        const extra: string[] = []
-        if (!quoteId && QUOTE_STAGES.includes(to)) {
-          const c = allClients.find((x) => x.id === o.clientId)
-          const site = allSites.find((x) => x.id === o.siteId) ?? allSites.find((x) => x.clientId === o.clientId)
-          const max = allRecords.reduce((m, r) => Math.max(m, Number(r.number.split('-')[2]) || 0), 0)
-          const n = max + 1
-          quoteId = `orc-l${Date.now()}`
-          const number = `ORC-${today.slice(0, 4)}-${String(n).padStart(4, '0')}`
-          const leadInfo = [
-            `Lead: ${c?.name ?? '—'}`,
-            c?.phone && `Telefone: ${c.phone}`,
-            c?.whatsapp && c.whatsapp !== c.phone && `WhatsApp: ${c.whatsapp}`,
-            c?.email && `E-mail: ${c.email}`,
-            c?.city && `Cidade: ${c.city}`,
-            `Origem: ${o.source}`,
-            `Oportunidade: ${o.title}`,
-            ...(o.reports ?? []).map((r) => `Relatório (${r.at.slice(0, 10)}): ${r.text}`),
-          ].filter(Boolean).join('\n')
-          setExtraQuotes((xs) => [
-            {
-              id: quoteId!, number, version: 1, createdAt: today, validUntil: addDays(today, 15), sentAt: null,
-              status: stageToQuoteStatus[to] ?? 'Rascunho', type: 'concreto', clientId: o.clientId, siteId: site?.id ?? '',
-              ownerId: o.ownerId, volumeElements: [], volumeMargin: '', areaElements: [], areaMargin: '', lines: [],
-              extras: defaultExtras(), paymentMethodIds: [], paymentTerms: '', executionDeadline: '', notes: leadInfo, demo: false,
-            },
-            ...xs,
-          ])
-          extra.push(`Rascunho de orçamento ${number} criado automaticamente`)
-        } else if (quoteId && stageToQuoteStatus[to]) {
-          const qs = stageToQuoteStatus[to]!
-          setQuoteStatus((m) => ({ ...m, [quoteId!]: qs }))
-          extra.push(`Orçamento vinculado: status "${qs}"`)
-        }
-        setOpps((xs) =>
-          xs.map((x) =>
-            x.id === id
-              ? { ...x, ...patch, stage: to, quoteId, history: [...extra.map(histEntry), histEntry(historyText), ...x.history] }
-              : x,
-          ),
-        )
-        return extra[0] ?? null
-      },
-      addReport: (id, text) =>
-        setOpps((xs) =>
-          xs.map((x) =>
-            x.id === id
-              ? { ...x, reports: [{ at: new Date().toISOString(), by: 'u-adm', text }, ...(x.reports ?? [])], history: [histEntry('Relatório de atendimento adicionado'), ...x.history] }
-              : x,
-          ),
-        ),
-      updateOpportunity: (id, patch, historyText) =>
-        setOpps((xs) =>
-          xs.map((o) =>
-            o.id === id
-              ? {
-                  ...o,
-                  ...patch,
-                  history: historyText
-                    ? [
-                        { at: new Date().toISOString(), by: 'u-adm', text: historyText },
-                        ...o.history,
-                      ]
-                    : o.history,
-                }
-              : o,
-          ),
-        ),
+      opportunities,
+      receivables,
+      addClient,
+      updateClient,
+      updateSite,
+      moveOpportunity,
+      addReport,
+      updateReport,
+      deleteReport,
+      updateOpportunity,
+      saveQuote,
       toasts,
       toast,
       dismissToast,
     }
-  }, [demoMode, extraClients, extraSites, opps, extraQuotes, quoteStatus, toasts, toast, dismissToast, setDemoMode])
+  }, [demoMode, clientRecords, siteRecords, opps, quoteRecords, toasts, toast, dismissToast, setDemoMode])
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>
 }

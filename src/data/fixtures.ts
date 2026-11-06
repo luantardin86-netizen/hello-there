@@ -118,6 +118,8 @@ export interface QuoteRecord {
   paymentTerms: string
   executionDeadline: string
   notes: string
+  /** Lead/oportunidade que originou este orçamento, quando aplicável. */
+  opportunityId?: string
   demo: boolean
 }
 
@@ -214,8 +216,8 @@ export interface Opportunity {
   lossReason: string | null
   quoteId: string | null
   history: { at: string; by: string; text: string }[]
-  /** Relatórios de atendimento: necessidades do cliente e observações. */
-  reports?: { at: string; by: string; text: string }[]
+  /** Relatórios editáveis de atendimento: necessidades e observações. */
+  reports?: { id?: string; at: string; by: string; text: string }[]
   demo: boolean
 }
 
