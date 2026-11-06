@@ -597,7 +597,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           localStorage.setItem(
             WEBSITE_LEAD_SEEN_KEY,
             JSON.stringify(Array.from(seenIds).slice(-500)),
-          );
+          )
+          value.toast({
+            tone: 'ok',
+            title: imported === 1 ? 'Novo lead recebido' : 'Novos leads recebidos',
+            body: `${imported} contato(s) importado(s) para a etapa Novo lead.`,
+          });
         }
       } catch (error) {
         console.error('[CRM] Falha ao sincronizar leads recebidos via POST:', error);
